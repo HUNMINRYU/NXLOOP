@@ -13,309 +13,432 @@ import type { PipelineResult } from '@/types/api';
 import type { GeneratedThumbnail } from '@/types/domain';
 
 const slugs: Record<string, { title: string; subtitle: string }> = {
-  'video-vault': { title: 'Video Vault', subtitle: 'Storage for completed short-form videos' },
-  'asset-library': { title: 'Asset Library', subtitle: 'Storage for generated thumbnails and image sources' },
-  'prompt-log': { title: 'Prompt Log', subtitle: 'Management of successful prompt history' },
+    'video-vault': { title: 'Video Vault', subtitle: 'Storage for completed short-form videos' },
+    'asset-library': { title: 'Asset Library', subtitle: 'Storage for generated thumbnails and image sources' },
+    'prompt-log': { title: 'Prompt Log', subtitle: 'Management of successful prompt history' },
 };
 
 type StorageSlugClientProps = {
-  slug: string;
+    slug: string;
 };
 
 type MediaItem = { url: string; gcsPath: GcsPath | null; retries: number };
 
 export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
-  const item = slugs[slug];
-  const { tasks, error, isLoading, isDummy } = usePipelineHistory();
-  const [results, setResults] = useState<Record<string, PipelineResult>>({});
-  const [cacheStats, setCacheStats] = useState<{
-    total_entries?: number;
-    active_entries?: number;
-    expired_entries?: number;
-  } | null>(null);
-  const [cacheMessage, setCacheMessage] = useState('');
-  const [videoItems, setVideoItems] = useState<MediaItem[]>([]);
-  const [thumbnailItems, setThumbnailItems] = useState<MediaItem[]>([]);
+    const item = slugs[slug];
+    const { tasks, error, isLoading, isDummy } = usePipelineHistory();
+    const [results, setResults] = useState<Record<string, PipelineResult>>({});
+    const [selectedProduct, setSelectedProduct] = useState<string>('all');
+    const [cacheStats, setCacheStats] = useState<{
+        total_entries?: number;
+        active_entries?: number;
+        expired_entries?: number;
+    } | null>(null);
+    const [cacheMessage, setCacheMessage] = useState('');
+    const [videoItems, setVideoItems] = useState<MediaItem[]>([]);
+    const [thumbnailItems, setThumbnailItems] = useState<MediaItem[]>([]);
 
-  useEffect(() => {
-    if (!slug || tasks.length === 0) {
-      return;
-    }
-    if (slug === 'video-vault' || slug === 'asset-library' || slug === 'prompt-log') {
-      const taskIds = tasks
-        .map((task) => (task.task_id ? asTaskId(String(task.task_id)) : null))
-        .filter((taskId): taskId is ReturnType<typeof asTaskId> => Boolean(taskId));
-      Promise.all(
-        taskIds.map((taskId) =>
-          fetchPipelineResult(taskId).then((data) => ({ taskId, data })).catch(() => null)
-        )
-      ).then((items) => {
-        const mapped: Record<string, PipelineResult> = {};
-        items.forEach((entry) => {
-          if (!entry) return;
-          mapped[entry.taskId] = entry.data;
+    // Unique products for dropdown
+    const productList = useMemo(() => {
+        const ps = new Set<string>();
+        tasks.forEach((t) => {
+            if (t.product) ps.add(t.product);
         });
-        setResults(mapped);
-      });
-    }
-  }, [slug, tasks]);
+        return Array.from(ps).sort();
+    }, [tasks]);
 
-  useEffect(() => {
-    if (slug !== 'prompt-log') {
-      return;
-    }
-    fetchCacheStats()
-      .then((data) => setCacheStats(data.stats))
-      .catch(() => setCacheStats(null));
-  }, [slug]);
+    // Filter tasks based on selected product
+    const filteredTasks = useMemo(() => {
+        if (selectedProduct === 'all') return tasks;
+        return tasks.filter((t) => t.product === selectedProduct);
+    }, [tasks, selectedProduct]);
 
-  const videoUrls = useMemo(() => {
-    if (slug !== 'video-vault') {
-      return [];
-    }
-    return tasks
-      .map((task) => results[String(task.task_id)]?.result?.generated_content?.video_url)
-      .filter((url): url is string => Boolean(url));
-  }, [results, slug, tasks]);
+    useEffect(() => {
+        if (!slug || tasks.length === 0) {
+            return;
+        }
+        const taskIds = tasks
+            .map((task) => (task.task_id ? asTaskId(String(task.task_id)) : null))
+            .filter((taskId): taskId is ReturnType<typeof asTaskId> => Boolean(taskId));
 
-  const thumbnailUrls = useMemo(() => {
-    if (slug !== 'asset-library') {
-      return [];
-    }
-    const items: string[] = [];
-    tasks.forEach((task) => {
-      const content = results[String(task.task_id)]?.result?.generated_content;
-      if (content?.thumbnail_url) {
-        items.push(content.thumbnail_url);
-      }
-      if (Array.isArray(content?.multi_thumbnails)) {
-        content.multi_thumbnails.forEach((thumb: GeneratedThumbnail) => {
-          const url = thumb.url || thumb.thumbnail_url || thumb.image_url;
-          if (url) {
-            items.push(url);
-          }
+        Promise.all(
+            taskIds.map((taskId) =>
+                fetchPipelineResult(taskId)
+                    .then((data) => ({ taskId, data }))
+                    .catch(() => null),
+            ),
+        ).then((items) => {
+            const mapped: Record<string, PipelineResult> = {};
+            items.forEach((entry) => {
+                if (!entry) return;
+                mapped[entry.taskId] = entry.data;
+            });
+            setResults(mapped);
         });
-      }
-    });
-    return items;
-  }, [results, slug, tasks]);
+    }, [slug, tasks]);
 
-  useEffect(() => {
-    if (slug !== 'video-vault') {
-      return;
-    }
-    const items = videoUrls.map((url) => ({
-      url,
-      gcsPath: deriveGcsPathFromUrl(url),
-      retries: 0,
-    }));
-    setVideoItems(items);
-  }, [videoUrls, slug]);
+    useEffect(() => {
+        if (slug === 'prompt-log') {
+            fetchCacheStats()
+                .then((data) => setCacheStats(data.stats))
+                .catch(() => setCacheStats(null));
+        }
+    }, [slug]);
 
-  useEffect(() => {
-    if (slug !== 'asset-library') {
-      return;
-    }
-    const items = thumbnailUrls.map((url) => ({
-      url,
-      gcsPath: deriveGcsPathFromUrl(url),
-      retries: 0,
-    }));
-    setThumbnailItems(items);
-  }, [thumbnailUrls, slug]);
+    const videoUrls = useMemo(() => {
+        if (slug !== 'video-vault') return [];
+        return filteredTasks
+            .map((task) => results[String(task.task_id)]?.result?.generated_content?.video_url)
+            .filter((url): url is string => Boolean(url));
+    }, [results, slug, filteredTasks]);
 
-  const handleRefreshMedia = async (kind: 'video' | 'thumb', index: number, gcsPath: GcsPath | null) => {
-    if (!gcsPath) {
-      return;
-    }
-    try {
-      const result = await refreshUrl(gcsPath);
-      if (kind === 'video') {
-        setVideoItems((prev) =>
-          prev.map((item, idx) =>
-            idx === index ? { ...item, url: result.url, retries: item.retries + 1 } : item
-          )
-        );
-      } else {
-        setThumbnailItems((prev) =>
-          prev.map((item, idx) =>
-            idx === index ? { ...item, url: result.url, retries: item.retries + 1 } : item
-          )
-        );
-      }
-    } catch {
-      // silent
-    }
-  };
+    const thumbnailUrls = useMemo(() => {
+        if (slug !== 'asset-library') return [];
+        const items: string[] = [];
+        filteredTasks.forEach((task) => {
+            const content = results[String(task.task_id)]?.result?.generated_content;
+            if (content?.thumbnail_url) items.push(content.thumbnail_url);
+            if (Array.isArray(content?.multi_thumbnails)) {
+                content.multi_thumbnails.forEach((thumb: GeneratedThumbnail) => {
+                    const url = thumb.url || thumb.thumbnail_url || thumb.image_url;
+                    if (url) items.push(url);
+                });
+            }
+        });
+        return items;
+    }, [results, slug, filteredTasks]);
 
-  const handleCacheClear = async () => {
-    setCacheMessage('');
-    try {
-      const result = await clearCache();
-      setCacheMessage(`캐시 ${result.cleared}개 삭제`);
-      const updated = await fetchCacheStats();
-      setCacheStats(updated.stats);
-    } catch {
-      setCacheMessage('캐시 삭제 실패');
-    }
-  };
-
-  if (!item) {
-    return (
-      <>
-        <Navbar />
-        <main className="min-h-screen bg-[var(--color-background)] flex flex-col items-center justify-center p-8 pt-24">
-          <Card className="max-w-2xl w-full text-center">
-            <h1 className="text-4xl font-bold mb-4">Not Found</h1>
-            <Button asChild variant="secondary"><Link href="/">Back to Home</Link></Button>
-          </Card>
-        </main>
-      </>
-    );
-  }
-
-  const renderVideoVault = () => {
-    if (slug !== 'video-vault') {
-      return null;
-    }
-    return (
-      <div className="grid gap-4 md:grid-cols-2">
-        {isDummy && <p className="text-xs text-[var(--color-muted)] col-span-full">(더미 데이터)</p>}
-        {videoItems.length === 0 && !isDummy && (
-          <p className="text-sm text-[var(--color-muted)]">표시할 비디오가 없습니다.</p>
-        )}
-        {videoItems.length > 0 && videoItems.map((item, idx) => (
-          <div key={`${item.url}-${idx}`} className="soft-section p-2 rounded-[var(--radius-md)]">
-            <video
-              src={item.url}
-              controls
-              className="w-full"
-              onError={() => {
-                if (item.retries < 1) {
-                  handleRefreshMedia('video', idx, item.gcsPath);
-                }
-              }}
-            />
-            <a
-              href={item.url}
-              download
-              className="mt-2 inline-block text-xs font-bold underline"
-            >
-              다운로드
-            </a>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const renderAssetLibrary = () => {
-    if (slug !== 'asset-library') {
-      return null;
-    }
-    return (
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
-        {thumbnailItems.length === 0 ? (
-          <p className="text-sm text-[var(--color-muted)]">표시할 썸네일이 없습니다.</p>
-        ) : (
-          thumbnailItems.map((item, idx) => (
-            <div key={`${item.url}-${idx}`} className="soft-section p-2 rounded-[var(--radius-md)]">
-              <img
-                src={item.url}
-                alt={`thumb-${idx}`}
-                className="w-full aspect-[9/16] object-cover"
-                onError={() => {
-                  if (item.retries < 1) {
-                    handleRefreshMedia('thumb', idx, item.gcsPath);
-                  }
-                }}
-              />
-              <a
-                href={item.url}
-                download
-                className="mt-2 inline-block text-xs font-bold underline"
-              >
-                다운로드
-              </a>
-            </div>
-          ))
-        )}
-      </div>
-    );
-  };
-
-  const renderPromptLog = () => {
-    if (slug !== 'prompt-log') {
-      return null;
-    }
-    return (
-      <div className="space-y-4">
-        <div className="soft-section p-4 space-y-2 rounded-[var(--radius-md)]">
-          <p className="font-bold">캐시 상태</p>
-          {cacheStats ? (
-            <div className="text-sm text-[var(--color-muted)] space-y-1">
-              <p>전체: {cacheStats.total_entries ?? '-'}</p>
-              <p>활성: {cacheStats.active_entries ?? '-'}</p>
-              <p>만료: {cacheStats.expired_entries ?? '-'}</p>
-            </div>
-          ) : (
-            <p className="text-sm text-[var(--color-muted)]">캐시 정보를 불러오지 못했습니다.</p>
-          )}
-          <Button type="button" variant="default" className="px-4 py-2" onClick={handleCacheClear}>
-            캐시 초기화
-          </Button>
-          {cacheMessage && <p className="text-xs text-[var(--color-muted)]">{cacheMessage}</p>}
-        </div>
-        {isDummy && <p className="text-xs text-[var(--color-muted)]">(더미 데이터)</p>}
-        {tasks.length === 0 ? (
-          <p className="text-sm text-[var(--color-muted)]">표시할 이력이 없습니다.</p>
-        ) : (
-          tasks.map((task, idx) => {
-            const promptLog =
-              results[task.task_id]?.result?.prompt_log ??
-              (isDummy ? DUMMY_PROMPT_LOGS[idx % DUMMY_PROMPT_LOGS.length]?.prompt_log : null);
-            return (
-              <div key={task.task_id} className="soft-section p-4 rounded-[var(--radius-md)]">
-                <p className="font-bold">Task: {task.task_id}</p>
-                <p className="text-sm text-[var(--color-muted)]">Status: {task.status}</p>
-                <p className="text-sm text-[var(--color-muted)]">Product: {task.product}</p>
-                {promptLog && (
-                  <details className="mt-3 soft-section p-2 rounded-[var(--radius-sm)]">
-                    <summary className="text-xs font-bold cursor-pointer">프롬프트 로그</summary>
-                    <pre className="mt-2 text-xs whitespace-pre-wrap">
-                      {JSON.stringify(promptLog, null, 2)}
-                    </pre>
-                  </details>
-                )}
-              </div>
+    useEffect(() => {
+        if (slug === 'video-vault') {
+            setVideoItems(
+                videoUrls.map((url) => ({
+                    url,
+                    gcsPath: deriveGcsPathFromUrl(url),
+                    retries: 0,
+                })),
             );
-          })
-        )}
-      </div>
+        }
+    }, [videoUrls, slug]);
+
+    useEffect(() => {
+        if (slug === 'asset-library') {
+            setThumbnailItems(
+                thumbnailUrls.map((url) => ({
+                    url,
+                    gcsPath: deriveGcsPathFromUrl(url),
+                    retries: 0,
+                })),
+            );
+        }
+    }, [thumbnailUrls, slug]);
+
+    const handleRefreshMedia = async (kind: 'video' | 'thumb', index: number, gcsPath: GcsPath | null) => {
+        if (!gcsPath) return;
+        try {
+            const result = await refreshUrl(gcsPath);
+            if (kind === 'video') {
+                setVideoItems((prev) =>
+                    prev.map((item, idx) =>
+                        idx === index ? { ...item, url: result.url, retries: item.retries + 1 } : item,
+                    ),
+                );
+            } else {
+                setThumbnailItems((prev) =>
+                    prev.map((item, idx) =>
+                        idx === index ? { ...item, url: result.url, retries: item.retries + 1 } : item,
+                    ),
+                );
+            }
+        } catch {
+            /* silent */
+        }
+    };
+
+    const handleCacheClear = async () => {
+        setCacheMessage('');
+        try {
+            const result = await clearCache();
+            setCacheMessage(`캐시 ${result.cleared}개 삭제`);
+            const updated = await fetchCacheStats();
+            setCacheStats(updated.stats);
+        } catch {
+            setCacheMessage('캐시 삭제 실패');
+        }
+    };
+
+    if (!item) {
+        return (
+            <>
+                <Navbar />
+                <main className="min-h-screen bg-[var(--color-background)] flex flex-col items-center justify-center p-8 pt-24">
+                    <Card className="max-w-2xl w-full text-center">
+                        <h1 className="text-4xl font-bold mb-4">Not Found</h1>
+                        <Button asChild variant="secondary">
+                            <Link href="/">Back to Home</Link>
+                        </Button>
+                    </Card>
+                </main>
+            </>
+        );
+    }
+
+    return (
+        <>
+            <Navbar />
+            <main className="min-h-screen bg-[var(--color-background)] p-8 pt-24">
+                <div className="max-w-6xl mx-auto">
+                    {/* Header Section */}
+                    <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+                        <div>
+                            <p className="font-black text-[var(--color-primary)] mb-2 uppercase tracking-widest text-sm opacity-80">
+                                Storage / {slug.replace('-', ' ')}
+                            </p>
+                            <h1 className="text-5xl font-black mb-4 tracking-tighter">{item.title}</h1>
+                            <p className="text-xl font-bold text-[var(--color-muted)]">{item.subtitle}</p>
+                        </div>
+
+                        {/* Filter Section */}
+                        <div className="bg-white/[0.03] backdrop-blur-xl border border-white/5 p-2 rounded-2xl flex items-center gap-4">
+                            <span className="text-xs font-black uppercase tracking-widest ml-4 opacity-40">
+                                Filter by Product
+                            </span>
+                            <select
+                                value={selectedProduct}
+                                onChange={(e) => setSelectedProduct(e.target.value)}
+                                className="bg-[var(--color-background)] border-none text-sm font-bold p-3 rounded-xl outline-none focus:ring-2 focus:ring-[var(--color-primary)]/50 min-w-[200px] cursor-pointer"
+                            >
+                                <option value="all">All Products</option>
+                                {productList.map((p) => (
+                                    <option key={p} value={p}>
+                                        {p}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    {isLoading && (
+                        <div className="flex flex-col items-center py-20 animate-pulse">
+                            <div className="w-12 h-12 rounded-full border-4 border-[var(--color-primary)] border-t-transparent animate-spin mb-4" />
+                            <p className="text-sm font-bold text-[var(--color-muted)]">데이터를 불러오는 중입니다...</p>
+                        </div>
+                    )}
+
+                    {error && (
+                        <Card className="p-8 border-rose-500/20 bg-rose-500/5 text-center">
+                            <p className="text-sm font-black text-rose-500">{error}</p>
+                        </Card>
+                    )}
+
+                    {!isLoading && !error && (
+                        <div className="space-y-12">
+                            {slug === 'video-vault' && (
+                                <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+                                    {videoItems.length === 0 ? (
+                                        <div className="col-span-full py-32 text-center border-2 border-dashed border-white/5 rounded-3xl">
+                                            <p className="text-[var(--color-muted)] font-bold">
+                                                표시할 비디오가 없습니다.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        videoItems.map((item, idx) => (
+                                            <div key={`${item.url}-${idx}`} className="group relative">
+                                                <Card className="p-0 overflow-hidden border-white/5 bg-white/[0.02] transition-all duration-500 hover:scale-[1.02] hover:bg-white/[0.05]">
+                                                    <div className="aspect-[9/16] bg-black flex items-center justify-center relative">
+                                                        <video
+                                                            src={item.url}
+                                                            controls
+                                                            className="w-full h-full object-contain"
+                                                            onError={() => {
+                                                                if (item.retries < 2)
+                                                                    handleRefreshMedia('video', idx, item.gcsPath);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="p-4 flex items-center justify-between bg-black/40 backdrop-blur-md">
+                                                        <span className="text-[10px] font-black uppercase tracking-widest opacity-50">
+                                                            {item.gcsPath?.split('/').pop() || 'Video Asset'}
+                                                        </span>
+                                                        <a
+                                                            href={item.url}
+                                                            download
+                                                            className="text-xs font-black text-[var(--color-primary)] hover:underline"
+                                                        >
+                                                            DOWNLOAD
+                                                        </a>
+                                                    </div>
+                                                </Card>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            )}
+
+                            {slug === 'asset-library' && (
+                                <div className="grid gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                                    {thumbnailItems.length === 0 ? (
+                                        <div className="col-span-full py-32 text-center border-2 border-dashed border-white/5 rounded-3xl">
+                                            <p className="text-[var(--color-muted)] font-bold">
+                                                표시할 썸네일이 없습니다.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        thumbnailItems.map((item, idx) => (
+                                            <div key={`${item.url}-${idx}`} className="group relative">
+                                                <Card className="p-0 overflow-hidden border-white/5 bg-white/[0.02] transition-all hover:scale-[1.05]">
+                                                    <img
+                                                        src={item.url}
+                                                        alt={`thumb-${idx}`}
+                                                        className="w-full aspect-[9/16] object-cover"
+                                                        onError={() => {
+                                                            if (item.retries < 2)
+                                                                handleRefreshMedia('thumb', idx, item.gcsPath);
+                                                        }}
+                                                    />
+                                                    <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <a
+                                                            href={item.url}
+                                                            download
+                                                            className="text-[10px] font-black text-white hover:text-[var(--color-primary)] block text-center uppercase tracking-widest"
+                                                        >
+                                                            Download Asset
+                                                        </a>
+                                                    </div>
+                                                </Card>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            )}
+
+                            {slug === 'prompt-log' && (
+                                <div className="space-y-6">
+                                    {/* Cache Control Card */}
+                                    <Card className="border-white/5 bg-gradient-to-br from-white/[0.04] to-transparent p-8">
+                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+                                            <div>
+                                                <h4 className="text-2xl font-black mb-2">Cache Performance</h4>
+                                                <p className="text-[var(--color-muted)] font-bold mb-6">
+                                                    Manage AI inference history and optimize database performance.
+                                                </p>
+
+                                                <div className="flex gap-8">
+                                                    <div className="text-center">
+                                                        <p className="text-3xl font-black text-white">
+                                                            {cacheStats?.total_entries ?? '-'}
+                                                        </p>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40">
+                                                            Total
+                                                        </p>
+                                                    </div>
+                                                    <div className="text-center">
+                                                        <p className="text-3xl font-black text-emerald-500">
+                                                            {cacheStats?.active_entries ?? '-'}
+                                                        </p>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40">
+                                                            Active
+                                                        </p>
+                                                    </div>
+                                                    <div className="text-center">
+                                                        <p className="text-3xl font-black text-rose-500">
+                                                            {cacheStats?.expired_entries ?? '-'}
+                                                        </p>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40">
+                                                            Expired
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-col items-center gap-3">
+                                                <Button
+                                                    type="button"
+                                                    variant="secondary"
+                                                    className="px-10 py-6 font-black tracking-widest"
+                                                    onClick={handleCacheClear}
+                                                >
+                                                    INITIALIZE CACHE
+                                                </Button>
+                                                {cacheMessage && (
+                                                    <p className="text-xs font-bold text-emerald-400">{cacheMessage}</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </Card>
+
+                                    <div className="grid gap-6">
+                                        {filteredTasks.length === 0 ? (
+                                            <p className="text-center py-20 text-[var(--color-muted)] font-bold opacity-30">
+                                                표시할 프롬프트 이력이 없습니다.
+                                            </p>
+                                        ) : (
+                                            filteredTasks.map((task, idx) => {
+                                                const promptLog =
+                                                    results[task.task_id]?.result?.prompt_log ??
+                                                    (isDummy
+                                                        ? DUMMY_PROMPT_LOGS[idx % DUMMY_PROMPT_LOGS.length]?.prompt_log
+                                                        : null);
+
+                                                return (
+                                                    <Card
+                                                        key={task.task_id}
+                                                        className="border-white/5 bg-white/[0.01] hover:bg-white/[0.03] transition-colors p-6"
+                                                    >
+                                                        <div className="flex items-start justify-between mb-6">
+                                                            <div className="space-y-1">
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="w-2 h-2 rounded-full bg-[var(--color-primary)] shadow-[0_0_10px_var(--color-primary)]" />
+                                                                    <h5 className="text-lg font-black tracking-tight">
+                                                                        {task.product}
+                                                                    </h5>
+                                                                </div>
+                                                                <p className="text-xs font-bold text-[var(--color-muted)] opacity-60">
+                                                                    ID: {task.task_id}
+                                                                </p>
+                                                            </div>
+                                                            <span
+                                                                className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${task.status === 'success' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}
+                                                            >
+                                                                {task.status}
+                                                            </span>
+                                                        </div>
+
+                                                        {promptLog && (
+                                                            <details className="group border border-white/5 rounded-2xl overflow-hidden shadow-inner">
+                                                                <summary className="p-4 bg-white/[0.02] cursor-pointer font-black text-[10px] uppercase tracking-widest group-open:bg-white/[0.05] transition-colors flex justify-between items-center">
+                                                                    <span>View Detailed Prompt Log</span>
+                                                                    <span className="group-open:rotate-180 transition-transform">
+                                                                        ↓
+                                                                    </span>
+                                                                </summary>
+                                                                <div className="p-6 bg-black/40">
+                                                                    <pre className="text-xs text-white/70 font-mono leading-relaxed overflow-x-auto">
+                                                                        {JSON.stringify(promptLog, null, 2)}
+                                                                    </pre>
+                                                                </div>
+                                                            </details>
+                                                        )}
+                                                    </Card>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="mt-20 pt-8 border-t border-white/5 flex justify-center">
+                        <Button
+                            asChild
+                            variant="ghost"
+                            className="font-black gap-2 hover:bg-white/5 transition-all px-10 py-6"
+                        >
+                            <Link href="/storage">← RETURN TO STORAGE HUB</Link>
+                        </Button>
+                    </div>
+                </div>
+            </main>
+        </>
     );
-  };
-
-  return (
-    <>
-      <Navbar />
-      <main className="min-h-screen bg-[var(--color-background)] p-8 pt-24">
-        <Card className="max-w-5xl mx-auto">
-          <p className="font-bold text-[var(--color-primary)] mb-2">Storage</p>
-          <h1 className="text-4xl font-bold mb-4">{item.title}</h1>
-          <p className="text-xl font-bold text-[var(--color-muted)] mb-8">{item.subtitle}</p>
-
-          {isLoading && <p className="text-sm text-[var(--color-muted)]">로딩 중...</p>}
-          {error && <p className="text-sm text-[var(--color-destructive)]">{error}</p>}
-
-          {renderVideoVault()}
-          {renderAssetLibrary()}
-          {renderPromptLog()}
-
-          <div className="mt-8">
-            <Button asChild variant="secondary"><Link href="/">Back to Home</Link></Button>
-          </div>
-        </Card>
-      </main>
-    </>
-  );
 }
