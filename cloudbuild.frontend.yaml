@@ -1,0 +1,31 @@
+steps:
+  # 1. 프론트엔드 이미지 빌드 (백엔드 API URL 포함)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_API_URL=https://nexloop-backend-ekhgbjmhqq-du.a.run.app'
+      - '-f'
+      - 'Dockerfile.frontend'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/nexloop-frontend:latest'
+      - '.'
+
+  # 2. 이미지 푸시
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/nexloop-frontend:latest']
+
+  # 3. Cloud Run 배포
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'nexloop-frontend'
+      - '--image=gcr.io/$PROJECT_ID/nexloop-frontend:latest'
+      - '--region=asia-northeast3'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

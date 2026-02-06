@@ -1,0 +1,32 @@
+# Frontend SSR용 Dockerfile
+FROM node:20-alpine AS builder
+
+WORKDIR /app/frontend
+
+# 빌드 타임 환경 변수 (API URL)
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+COPY frontend/package.json ./
+COPY frontend/package-lock.json ./
+RUN npm install
+
+COPY frontend/ ./
+RUN npm run build
+
+FROM node:20-alpine
+
+WORKDIR /app/frontend
+
+ENV NODE_ENV=production
+ENV PORT=8080
+
+COPY --from=builder /app/frontend/package.json ./
+COPY --from=builder /app/frontend/next.config.ts ./
+COPY --from=builder /app/frontend/dist ./dist
+COPY --from=builder /app/frontend/public ./public
+COPY --from=builder /app/frontend/node_modules ./node_modules
+
+EXPOSE 8080
+
+CMD ["npm", "start"]

@@ -1,0 +1,30 @@
+steps:
+  # 1. 백엔드 이미지 빌드
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-f', 'Dockerfile.backend', '-t', 'gcr.io/$PROJECT_ID/nexloop-backend:latest', '.']
+
+  # 2. 이미지 푸시
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/nexloop-backend:latest']
+
+  # 3. Cloud Run 배포 (Cloud SQL 연결 포함)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'nexloop-backend'
+      - '--image=gcr.io/$PROJECT_ID/nexloop-backend:latest'
+      - '--region=asia-northeast3'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--add-cloudsql-instances=$PROJECT_ID:asia-northeast3:nexloop-db'
+      # NOTE: 시크릿은 Secret Manager로 이관 (Cloud Run env var는 그대로 유지하되 값은 secret 참조)
+      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest,GOOGLE_API_KEY=GOOGLE_API_KEY:latest,NAVER_CLIENT_ID=NAVER_CLIENT_ID:latest,NAVER_CLIENT_SECRET=NAVER_CLIENT_SECRET:latest,NOTION_API_KEY=NOTION_API_KEY:latest'
+      # NOTE: CORS_ORIGINS는 콤마 포함 값(여러 Origin)일 수 있어 gcloud 파싱이 깨지기 쉬움.
+      # 배포 파이프라인에서는 CORS_ORIGINS를 건드리지 않고, 운영 환경에서 별도 업데이트로 관리한다.
+      - '--update-env-vars=APP_URL=https://nexloop-backend-ekhgbjmhqq-du.a.run.app'
+      - '--min-instances=1'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

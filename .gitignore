@@ -1,0 +1,80 @@
+# Secrets
+key.json
+secrets.json
+.env
+.env*
+*.env
+.env.backup*
+*.env.*
+!.env.example
+!frontend/.env.local
+
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
+.venv/
+venv/
+.ruff_cache/
+
+# Node
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+
+# Coverage
+.coverage
+
+# AI Agent (개발 환경 전용)
+.claude/
+.agent/
+CLAUDE.md
+.cursorrules
+skills-installed.md
+claude_plugin_skills.md
+
+# Debug/Test files (로컬 전용)
+debug_*.py
+inspect_db.py
+test_phase1.py
+test-commands.md
+firebase-debug.log
+
+# 환경별 설정
+gcs-cors.json
+deploy_gcp.*
+
+# 내부 문서 (팀 내부용)
+IMPLEMENTATION_SUMMARY.md
+PHASE1_*.md
+FRONTEND-BACKEND.md
+SETUP.md
+DEPLOYMENT_*.md
+.github-exclude-checklist.md
+
+# 중복/구형 문서 (CLAUDE.md에 통합됨)
+README_v2.md
+AGENTS.md
+RULES.md
+
+# 분석 아티팩트 (재생성 가능)
+*_vulture*.txt
+*_knip*.txt
+knip_output.json
+knip_report*.txt
+
+# --- GitHub exclude ---
+data/
+outputs/
+docs/
+!docs/troubleshooting/
+RULES*.md
+GUARDRAILS.md
+scripts/
+frontend/dist/
+frontend/help_output.txt
+nu_
+*.txt
+
