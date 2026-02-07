@@ -1,26 +1,54 @@
-.venv/
+# Git
 .git/
-.claude/
-.agent/
-node_modules/
-frontend/node_modules/
-frontend/.next/
-frontend/dist/
-data/
-outputs/
-docs/
-tests/
-__pycache__/
-*.pyc
+.gitignore
+
+# Secrets & Env
 .env
-.env.*
-!.env.example
+.env*
+*.env
 secrets.json
 key.json
-.coverage
-*.txt
-*.md
-!README.md
+! .env.example
+
+# Python
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
 .ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.ipynb_checkpoints/
+.coverage
+
+# Node
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+frontend/dist/
+
+# IDE & OS
 .idea/
 .vscode/
+.DS_Store
+Thumbs.db
+
+# AI Agent & Docs
+.claude/
+.agent/
+CLAUDE.md
+.cursorrules
+docs/
+tests/
+*.md
+!README.md
+
+# Build & Logs
+*.log
+firebase-debug.log
+Dockerfile*
+docker-compose*
+cloudbuild.*.yaml
