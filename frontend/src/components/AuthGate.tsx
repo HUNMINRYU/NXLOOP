@@ -28,7 +28,13 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
             // 2) 서버 세션 확인(/auth/me)
             try {
                 const me = await fetchMe();
-                setAuth({ email: me.email, role: me.role, name: me.name });
+                setAuth({
+                    email: me.email,
+                    role: me.role,
+                    name: me.name,
+                    tier: me.tier ?? 'FREE',
+                    subscriptionStatus: me.subscription_status ?? 'none',
+                });
 
                 // 3) 권한 체크(Admin)
                 if (pathname.startsWith(ADMIN_PATH_PREFIX) && me.role !== 'admin') {

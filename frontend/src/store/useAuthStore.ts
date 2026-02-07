@@ -7,7 +7,15 @@ interface AuthState {
     email: string | null;
     role: string | null;
     name: string | null;
-    setAuth: (auth: { email: string | null; role: string | null; name: string | null }) => void;
+    tier: string;
+    subscriptionStatus: string;
+    setAuth: (auth: {
+        email: string | null;
+        role: string | null;
+        name: string | null;
+        tier?: string;
+        subscriptionStatus?: string;
+    }) => void;
     clearAuth: () => void;
 }
 
@@ -18,11 +26,24 @@ export const useAuthStore = create<AuthState>()(
                 email: null,
                 role: null,
                 name: null,
-                setAuth: (auth) => set(auth),
+                tier: 'FREE',
+                subscriptionStatus: 'none',
+                setAuth: (auth) =>
+                    set({
+                        ...auth,
+                        tier: auth.tier ?? 'FREE',
+                        subscriptionStatus: auth.subscriptionStatus ?? 'none',
+                    }),
                 clearAuth: () => {
                     // Zustand persist가 사용하는 실제 키 제거
                     sessionStorage.removeItem('auth-storage');
-                    set({ email: null, role: null, name: null });
+                    set({
+                        email: null,
+                        role: null,
+                        name: null,
+                        tier: 'FREE',
+                        subscriptionStatus: 'none',
+                    });
                 },
             }),
             {
