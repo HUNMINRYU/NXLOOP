@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from starlette.requests import Request
 
-from api.middleware.csrf import csrf_protect
+from api.middleware.csrf import csrf_protect  # type: ignore[no-untyped-call]
 
 
 def _make_request(
@@ -36,7 +36,7 @@ def _make_request(
     return Request(scope)
 
 
-async def _ok_response(_request):
+async def _ok_response(_request):  # type: ignore[no-untyped-def]
     class DummyResponse:
         status_code = 200
 
