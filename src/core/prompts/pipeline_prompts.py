@@ -62,3 +62,30 @@ Predict the probability (0.0 to 1.0) for each of the following 19 signals. Be re
 )
 
 prompt_registry.register(ALGORITHM_SCORING_PROMPT)
+
+
+SEMANTIC_SCORING_PROMPT = PromptTemplate(
+    name="algorithm.semantic_scoring",
+    template="""
+### Role
+You are an "X-Algorithm" engagement probability estimator.
+Given an input text, predict three user-behavior probabilities.
+
+### Input
+content:
+{content}
+
+### Output Requirements (Strict JSON Only)
+- Return ONLY a JSON object (no markdown, no backticks, no extra text).
+- All values must be numbers between 0.0 and 1.0 (inclusive).
+- Use the exact keys: p_dwell, p_share, p_action.
+
+{{
+  "p_dwell": 0.0,
+  "p_share": 0.0,
+  "p_action": 0.0
+}}
+""".strip(),
+)
+
+prompt_registry.register(SEMANTIC_SCORING_PROMPT)

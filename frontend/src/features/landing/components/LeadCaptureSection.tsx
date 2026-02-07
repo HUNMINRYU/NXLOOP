@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Modal, useToast, Input } from '@/components/ui';
 import { Button as UIButton } from '@/components/ui/Button';
 import { createLead } from '@/lib/api';
@@ -16,21 +16,15 @@ export default function LeadCaptureSection({
   onExternalClose,
   triggerReason = 'cta'
 }: LeadCaptureSectionProps) {
-  const [modalOpen, setModalOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [leadEmail, setLeadEmail] = useState('');
   const toast = useToast();
 
-  useEffect(() => {
-    if (externalTrigger) {
-      setModalOpen(true);
-    }
-  }, [externalTrigger]);
+  const modalOpen = useMemo(() => externalTrigger || internalOpen, [externalTrigger, internalOpen]);
 
   const handleClose = () => {
-    setModalOpen(false);
-    if (onExternalClose) {
-      onExternalClose();
-    }
+    setInternalOpen(false);
+    onExternalClose?.();
   };
 
   return (
@@ -55,7 +49,7 @@ export default function LeadCaptureSection({
             </div>
 
             <UIButton
-              onClick={() => setModalOpen(true)}
+              onClick={() => setInternalOpen(true)}
               className="text-xl md:text-2xl px-16 py-8 h-auto font-black shadow-xl transition-all group rounded-2xl bg-[#0ca678] hover:bg-[#099268] text-white hover:scale-105 active:scale-95 shadow-[#0ca678]/30 hover:shadow-[#0ca678]/50"
             >
               Yes, SURE!

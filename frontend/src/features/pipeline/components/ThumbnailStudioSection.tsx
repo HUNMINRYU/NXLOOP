@@ -257,18 +257,19 @@ export function ThumbnailStudioSection({
                             </div>
                         ))}
 
-                    {compareItems.map((item, idx) => (
-                        <div
-                            key={idx}
-                            className="group relative flex flex-col gap-3 animate-in fade-in zoom-in duration-500"
-                            style={{ animationDelay: `${idx * 100}ms` }}
-                        >
-                            <div className="relative aspect-[9/16] overflow-hidden rounded-[28px] border-2 border-white shadow-lg group-hover:shadow-2xl transition-all duration-500 group-hover:-translate-y-2">
-                                <img
-                                    src={item.url}
-                                    alt={item.name}
-                                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                                />
+	                    {compareItems.map((item, idx) => (
+	                        <div
+	                            key={idx}
+	                            className="group relative flex flex-col gap-3 animate-in fade-in zoom-in duration-500"
+	                            style={{ animationDelay: `${idx * 100}ms` }}
+	                        >
+	                            <div className="relative aspect-[9/16] overflow-hidden rounded-[28px] border-2 border-white shadow-lg group-hover:shadow-2xl transition-all duration-500 group-hover:-translate-y-2">
+	                                {/* eslint-disable-next-line @next/next/no-img-element -- 외부/동적 URL(서명 URL 포함)이라 next/image 최적화 적용이 어렵습니다. */}
+	                                <img
+	                                    src={item.url}
+	                                    alt={item.name}
+	                                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+	                                />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                                 <div className="absolute bottom-4 left-4 right-4 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-500">
                                     <div className="text-[10px] font-black text-white/70 uppercase tracking-widest mb-1">

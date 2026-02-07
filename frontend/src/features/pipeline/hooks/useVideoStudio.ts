@@ -64,7 +64,7 @@ export function useVideoStudio({ selectedProduct, initialVideoPresets }: UseVide
             };
             loadPresets();
         }
-    }, []);
+    }, [videoPresets]);
 
     const handleGenerateVideoHook = async () => {
         if (!selectedProduct || !videoHookStyle) return;

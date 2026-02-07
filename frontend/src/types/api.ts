@@ -10,6 +10,7 @@ export interface PipelineStatus {
     step: string;
   };
   task_id: TaskId;
+  process_logs?: string[];
 }
 
 export interface PipelineResult {

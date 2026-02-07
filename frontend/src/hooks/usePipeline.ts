@@ -7,69 +7,73 @@ import {
 } from '@/lib/api';
 import { DUMMY_PRODUCTS } from '@/lib/dummyData';
 import { PipelineStatus } from '@/types/api';
-import { GeneratedThumbnail, PipelineResultDetails } from '@/types/domain';
+import { GeneratedThumbnail } from '@/types/domain';
 import { TaskId } from '@/types/common';
 import { usePipelineStore } from '@/store/usePipelineStore';
 
 export default function usePipeline() {
   const isDev = process.env.NODE_ENV === 'development';
   const hasFetchedResultRef = useRef(false);
+  const didInitProductsRef = useRef(false);
   
   // Zustand Store 구독
-  const {
-    selectedProduct, youtubeCount, naverCount, includeComments,
-    generateSocial, generateVideo, generateThumbnails, exportToNotion,
-    taskId, isRunning, status: pipelineStatus, result: pipelineResult, error: errorMessage,
-    setConfiguration, setExecutionState, reset
-  } = usePipelineStore();
+	  const {
+	    selectedProduct, youtubeCount, naverCount, includeComments,
+	    generateSocial, generateVideo, generateThumbnails, exportToNotion,
+	    taskId, isRunning, status: pipelineStatus, result: pipelineResult, error: errorMessage,
+	    setConfiguration, setExecutionState
+	  } = usePipelineStore();
 
   // 제품 목록 페칭 (이 부분은 React Query로 대체 가능하지만, 현재 구조 유지하되 products 로컬 상태는 훅 내부에 둠)
   // TODO: 추후 products도 React Query로 전환 권장
-  const [products, setProducts] = useState<string[]>([]); // React import 필요
+	  const [products, setProducts] = useState<string[]>([]); // React import 필요
+	  
+	  useEffect(() => {
+	    if (didInitProductsRef.current) return;
+	    didInitProductsRef.current = true;
 
-  useEffect(() => {
-    let isMounted = true;
-    fetchProducts()
-      .then((data) => {
-        if (!isMounted) return;
-        const names = data?.products || [];
-        if (names.length > 0) {
-          setProducts(names);
-          // 초기 선택값이 없을 때만 설정
-          if (!selectedProduct && names.length > 0) {
-            setConfiguration({ selectedProduct: names[0] });
-          }
-          return;
-        }
-        if (isDev) {
-          setProducts(DUMMY_PRODUCTS);
-          if (!selectedProduct && DUMMY_PRODUCTS.length > 0) {
-            setConfiguration({ selectedProduct: DUMMY_PRODUCTS[0] });
-          }
-          return;
-        }
+	    let isMounted = true;
+	    fetchProducts()
+	      .then((data) => {
+	        if (!isMounted) return;
+	        const names = data?.products || [];
+	        if (names.length > 0) {
+	          setProducts(names);
+	          // 초기 선택값이 없을 때만 설정
+	          if (!usePipelineStore.getState().selectedProduct && names.length > 0) {
+	            setConfiguration({ selectedProduct: names[0] });
+	          }
+	          return;
+	        }
+	        if (isDev) {
+	          setProducts(DUMMY_PRODUCTS);
+	          if (!usePipelineStore.getState().selectedProduct && DUMMY_PRODUCTS.length > 0) {
+	            setConfiguration({ selectedProduct: DUMMY_PRODUCTS[0] });
+	          }
+	          return;
+	        }
         setProducts([]);
         setConfiguration({ selectedProduct: '' });
         setExecutionState({ error: '제품 목록을 불러오지 못했습니다.' });
       })
-      .catch(() => {
-        if (!isMounted) return;
-        if (isDev) {
-          setProducts(DUMMY_PRODUCTS);
-          if (!selectedProduct && DUMMY_PRODUCTS.length > 0) {
-             setConfiguration({ selectedProduct: DUMMY_PRODUCTS[0] });
-          }
-          return;
-        }
-        setProducts([]);
-        setConfiguration({ selectedProduct: '' });
-        setExecutionState({ error: '제품 목록을 불러오지 못했습니다.' });
-      });
+	      .catch(() => {
+	        if (!isMounted) return;
+	        if (isDev) {
+	          setProducts(DUMMY_PRODUCTS);
+	          if (!usePipelineStore.getState().selectedProduct && DUMMY_PRODUCTS.length > 0) {
+	             setConfiguration({ selectedProduct: DUMMY_PRODUCTS[0] });
+	          }
+	          return;
+	        }
+	        setProducts([]);
+	        setConfiguration({ selectedProduct: '' });
+	        setExecutionState({ error: '제품 목록을 불러오지 못했습니다.' });
+	      });
 
-    return () => {
-      isMounted = false;
-    };
-  }, []); // 의존성 배열 비움 (마운트 시 1회)
+	    return () => {
+	      isMounted = false;
+	    };
+	  }, [isDev, setConfiguration, setExecutionState]); // 마운트 시 1회만 실행되도록 ref로 가드
 
   // Polling 및 EventSource 로직
   useEffect(() => {

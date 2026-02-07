@@ -1,29 +1,22 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Navbar } from '@/features/landing';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import ChatbotPanel from '@/components/ChatbotPanel';
 import {
     fetchInsightFailures,
     fetchInsightMetrics,
-    fetchInsightTeams,
-    generateDailyReport,
     ingestNaverInsights,
     ingestYoutubeInsights,
     searchInsights,
 } from '@/lib/api';
 import type {
-    DailyReportResponse,
     InsightDoc,
     InsightFailureEvent,
     InsightMetricsResponse,
-    NaverIngestResponse,
-    YouTubeIngestResponse,
 } from '@/types/insights';
-import type { Team } from '@/types/api';
 
 export default function InsightsDashboardClient() {
     // --- States ---
@@ -47,11 +40,7 @@ export default function InsightsDashboardClient() {
     const [isChatOpen, setIsChatOpen] = useState(false);
 
     // --- Effects ---
-    useEffect(() => {
-        loadDashboardData();
-    }, [metricsDays]);
-
-    const loadDashboardData = async () => {
+    const loadDashboardData = useCallback(async () => {
         setMetricsLoading(true);
         setFailureLoading(true);
         try {
@@ -67,7 +56,11 @@ export default function InsightsDashboardClient() {
             setMetricsLoading(false);
             setFailureLoading(false);
         }
-    };
+    }, [metricsDays]);
+
+    useEffect(() => {
+        void loadDashboardData();
+    }, [loadDashboardData]);
 
     // --- Actions ---
     const handleSearch = async () => {
@@ -83,16 +76,49 @@ export default function InsightsDashboardClient() {
         }
     };
 
-    // --- Render Helpers ---
-    const kpiStats = useMemo(() => {
-        if (!metrics) return [];
-        // 시스템 액션 지표를 KPI 카드로 변환
-        return metrics.by_action.slice(0, 3).map((a) => ({
-            label: a.action,
-            value: a.count,
-            trend: '+12.5%', // Sample data
-        }));
-    }, [metrics]);
+    const handleForceIngestNaver = async () => {
+        const query = window.prompt('네이버 수집 키워드를 입력하세요.', naverQuery) ?? '';
+        const trimmed = query.trim();
+        if (!trimmed) return;
+
+        setNaverQuery(trimmed);
+        setNaverLoading(true);
+        try {
+            await ingestNaverInsights({
+                query: trimmed,
+                max_results: 20,
+                include_products: true,
+                include_blogs: true,
+                include_news: true,
+            });
+            await loadDashboardData();
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setNaverLoading(false);
+        }
+    };
+
+    const handleForceIngestYoutube = async () => {
+        const query = window.prompt('유튜브 수집 키워드를 입력하세요.', youtubeQuery) ?? '';
+        const trimmed = query.trim();
+        if (!trimmed) return;
+
+        setYoutubeQuery(trimmed);
+        setYoutubeLoading(true);
+        try {
+            await ingestYoutubeInsights({
+                query: trimmed,
+                max_results: 20,
+                include_comments: true,
+            });
+            await loadDashboardData();
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setYoutubeLoading(false);
+        }
+    };
 
     return (
         <div className="relative min-h-screen overflow-hidden pb-12">
@@ -118,9 +144,13 @@ export default function InsightsDashboardClient() {
                 {/* Top Action Bar: 스크린샷처럼 필터와 액션 버튼 배치 */}
                 <div className="flex flex-wrap items-center justify-between gap-4 bg-white/80 backdrop-blur-xl p-4 rounded-xl border border-slate-200/60 shadow-lg shadow-slate-200/50">
                     <div className="flex items-center gap-3">
-                        <select className="bg-slate-50 border-none text-sm font-bold p-2 rounded-lg outline-none cursor-pointer">
-                            <option>지난 {metricsDays}일간</option>
-                            <option>지난 30일간</option>
+                        <select
+                            className="bg-slate-50 border-none text-sm font-bold p-2 rounded-lg outline-none cursor-pointer"
+                            value={metricsDays}
+                            onChange={(e) => setMetricsDays(Number(e.target.value))}
+                        >
+                            <option value={7}>지난 7일간</option>
+                            <option value={30}>지난 30일간</option>
                         </select>
                         <select className="bg-slate-50 border-none text-sm font-bold p-2 rounded-lg outline-none cursor-pointer">
                             <option>전략 대시보드 모드</option>
@@ -128,6 +158,13 @@ export default function InsightsDashboardClient() {
                         </select>
                     </div>
                     <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            className="rounded-lg h-10 border-slate-200 text-slate-600 font-bold"
+                            onClick={() => setIsChatOpen(true)}
+                        >
+                            AI 챗봇
+                        </Button>
                         <Button variant="outline" className="rounded-lg h-10 border-slate-200 text-slate-600 font-bold">
                             + 필터 레이아웃
                         </Button>
@@ -151,23 +188,26 @@ export default function InsightsDashboardClient() {
                     </div>
                     <input
                         className="w-full bg-white border border-slate-200 rounded-xl py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-[#0ca678]/20 focus:border-[#0ca678] transition-all shadow-sm text-slate-600 font-medium"
-                        placeholder="지식 베이스, 채널명, 또는 캠페인 상태로 검색..."
+                        placeholder={searching ? '검색 중...' : '지식 베이스, 채널명, 또는 캠페인 상태로 검색...'}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                        disabled={searching}
                     />
                 </div>
 
                 {/* Top Row: KPI 카드 섹션 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50 flex flex-col justify-between h-32 relative overflow-hidden">
-                        <div>
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">인사이트 수집량</p>
-                            <div className="flex items-baseline gap-2 mt-1">
-                                <h3 className="text-2xl font-black text-slate-900">{metrics?.total || 0}</h3>
-                                <span className="text-sm font-bold text-emerald-500">↑ 28.9%</span>
-                            </div>
-                        </div>
+	                    <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50 flex flex-col justify-between h-32 relative overflow-hidden">
+	                        <div>
+	                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">인사이트 수집량</p>
+	                            <div className="flex items-baseline gap-2 mt-1">
+	                                <h3 className="text-2xl font-black text-slate-900">
+	                                    {metricsLoading ? '...' : metrics?.total || 0}
+	                                </h3>
+	                                <span className="text-sm font-bold text-emerald-500">↑ 28.9%</span>
+	                            </div>
+	                        </div>
                         <div className="mt-2 h-8 w-full bg-emerald-50 rounded flex items-end p-1 gap-1">
                             {[40, 70, 45, 90, 65, 80, 55].map((h, i) => (
                                 <div key={i} className="flex-1 bg-emerald-400 rounded-sm" style={{ height: `${h}%` }} />
@@ -192,15 +232,15 @@ export default function InsightsDashboardClient() {
                         </div>
                     </Card>
 
-                    <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50 flex flex-col justify-between h-32 group hover:bg-[#0ca678] transition-colors cursor-pointer">
-                        <div>
-                            <p className="text-xs font-bold text-slate-400 group-hover:text-white/70 uppercase tracking-wider">
-                                수집 에러 알림
-                            </p>
-                            <h3 className="text-2xl font-black text-slate-900 group-hover:text-white mt-1">
-                                {failures.length}건
-                            </h3>
-                        </div>
+	                    <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50 flex flex-col justify-between h-32 group hover:bg-[#0ca678] transition-colors cursor-pointer">
+	                        <div>
+	                            <p className="text-xs font-bold text-slate-400 group-hover:text-white/70 uppercase tracking-wider">
+	                                수집 에러 알림
+	                            </p>
+	                            <h3 className="text-2xl font-black text-slate-900 group-hover:text-white mt-1">
+	                                {failureLoading ? '...' : `${failures.length}건`}
+	                            </h3>
+	                        </div>
                         <div className="text-xs font-bold text-slate-400 group-hover:text-white/70 flex items-center gap-1">
                             상태 체크 완료{' '}
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -332,22 +372,24 @@ export default function InsightsDashboardClient() {
                             <span className="w-2 h-6 bg-[#6366f1] rounded-full" />
                             실시간 지식 수집 및 분석 내역
                         </h4>
-                        <div className="flex gap-2">
-                            <Button
-                                onClick={() => setNaverLoading(true)}
-                                variant="outline"
-                                className="text-xs font-bold h-8 border-slate-100"
-                            >
-                                네이버 강제 수집
-                            </Button>
-                            <Button
-                                onClick={() => setYoutubeLoading(true)}
-                                variant="outline"
-                                className="text-xs font-bold h-8 border-slate-100"
-                            >
-                                유튜브 강제 수집
-                            </Button>
-                        </div>
+	                        <div className="flex gap-2">
+	                            <Button
+	                                onClick={handleForceIngestNaver}
+	                                variant="outline"
+	                                className="text-xs font-bold h-8 border-slate-100"
+	                                disabled={naverLoading}
+	                            >
+	                                {naverLoading ? '수집 중...' : '네이버 강제 수집'}
+	                            </Button>
+	                            <Button
+	                                onClick={handleForceIngestYoutube}
+	                                variant="outline"
+	                                className="text-xs font-bold h-8 border-slate-100"
+	                                disabled={youtubeLoading}
+	                            >
+	                                {youtubeLoading ? '수집 중...' : '유튜브 강제 수집'}
+	                            </Button>
+	                        </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
@@ -434,6 +476,8 @@ export default function InsightsDashboardClient() {
                     </div>
                 </Card>
             </main>
+
+            <ChatbotPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
         </div>
     );
 }
