@@ -6,7 +6,7 @@ import ChatbotWidget from '@/components/ChatbotWidget';
 import AuthGate from '@/components/AuthGate';
  
 export default function Providers({ children }: { children: React.ReactNode }) {
-    const showChatbot = true;
+    const showChatbot = process.env.NEXT_PUBLIC_DISABLE_CHATBOT !== 'true';
  
     return (
         <ToastProvider>

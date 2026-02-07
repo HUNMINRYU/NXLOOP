@@ -1,7 +1,9 @@
 import type { NextConfig } from 'next';
 
+const distDir = process.env.NEXLOOP_NEXT_DIST_DIR || 'dist';
+
 const nextConfig: NextConfig = {
-    distDir: 'dist',
+    distDir,
     images: {
         unoptimized: true,
     },

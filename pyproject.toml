@@ -103,3 +103,8 @@ exclude = "(^tests/)"
 testpaths = ["tests"]
 python_files = "test_*.py"
 addopts = "-v --cov=src -p no:cacheprovider"
+
+[tool.coverage.run]
+# 프론트엔드 E2E 스모크처럼 Python(src/)을 전혀 import 하지 않는 테스트를 단독 실행하면
+# "No data was collected" 경고가 뜰 수 있습니다. 의도된 케이스이므로 경고를 비활성화합니다.
+disable_warnings = ["no-data-collected"]

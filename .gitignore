@@ -16,9 +16,15 @@ __pycache__/
 .venv/
 venv/
 .ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.ipynb_checkpoints/
 
 # Node
 node_modules/
+**/node_modules/
+.next/
+**/.next/
 
 # IDE
 .idea/
@@ -74,7 +80,11 @@ RULES*.md
 GUARDRAILS.md
 scripts/
 frontend/dist/
+frontend/.next-e2e/
 frontend/help_output.txt
 nu_
 *.txt
+
+# 임시 백업 파일 (로컬 전용)
+*.backup
 

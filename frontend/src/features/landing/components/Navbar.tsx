@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { Tooltip, Drawer, useToast, Button } from '@/components/ui';
+import { Drawer, Button } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
 
 import { usePathname } from 'next/navigation';
@@ -128,7 +128,6 @@ export default function Navbar() {
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [scrolled, setScrolled] = useState(false);
     const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const toast = useToast();
     const { email: userEmail, role: userRole } = useAuth();
     const pathname = usePathname();
     const userInitial = userEmail ? userEmail[0]?.toUpperCase() : 'U';
@@ -266,6 +265,18 @@ export default function Navbar() {
                                         </Button>
                                     </Link>
                                 )}
+
+                                <Link href="/pricing" aria-label="Upgrade">
+                                    <Button
+                                        className={`rounded-full font-bold h-10 px-6 ${
+                                            showDarkNav
+                                                ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                                                : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+                                        }`}
+                                    >
+                                        Upgrade
+                                    </Button>
+                                </Link>
                                 <Button
                                     variant={showDarkNav ? 'outline' : 'secondary'}
                                     className="rounded-full font-bold h-10 px-6 ml-2"
@@ -277,6 +288,14 @@ export default function Navbar() {
                         </div>
                     ) : (
                         <>
+                            <Link href="/pricing">
+                                <Button
+                                    variant="ghost"
+                                    className={`font-bold rounded-full h-10 px-6 ${showDarkNav ? 'text-slate-600' : 'text-white hover:bg-white/10'}`}
+                                >
+                                    Pricing
+                                </Button>
+                            </Link>
                             <Link href="/login">
                                 <Button
                                     variant="ghost"
@@ -373,6 +392,13 @@ export default function Navbar() {
                                         <div className="font-bold text-slate-900 truncate">{userEmail}</div>
                                     </div>
                                 </div>
+                                <Link
+                                    href="/pricing"
+                                    className="flex items-center justify-center gap-3 w-full h-14 bg-slate-900 rounded-2xl text-sm font-bold text-white hover:bg-slate-800 transition-all"
+                                    onClick={() => setDrawerOpen(false)}
+                                >
+                                    Upgrade
+                                </Link>
                                 {userRole === 'admin' && (
                                     <Link
                                         href="/admin/scheduler"
@@ -408,6 +434,13 @@ export default function Navbar() {
                             </div>
                         ) : (
                             <div className="flex flex-col gap-3">
+                                <Link
+                                    href="/pricing"
+                                    className="flex items-center justify-center h-14 rounded-2xl border border-slate-200 font-bold text-slate-600"
+                                    onClick={() => setDrawerOpen(false)}
+                                >
+                                    Pricing
+                                </Link>
                                 <Link
                                     href="/signup"
                                     className="flex items-center justify-center h-14 rounded-2xl bg-slate-900 font-bold text-white shadow-xl shadow-slate-200"
