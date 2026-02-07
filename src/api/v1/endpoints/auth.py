@@ -120,7 +120,13 @@ async def logout(
 
 @router.get("/me")
 async def me(user: CurrentUser):
-    return {"email": user.email, "role": user.role, "name": user.name}
+    return {
+        "email": user.email,
+        "role": user.role,
+        "name": user.name,
+        "tier": getattr(user, "tier", "FREE"),
+        "subscription_status": getattr(user, "subscription_status", "none"),
+    }
 
 
 @router.post("/ping")

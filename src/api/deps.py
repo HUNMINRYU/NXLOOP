@@ -47,6 +47,24 @@ async def get_current_user_optional(
 OptionalUser = Annotated[Any | None, Depends(get_current_user_optional)]
 
 
+TIER_ORDER = {"FREE": 0, "PRO": 1, "BUSINESS": 2}
+
+
+def require_tier(min_tier: str):
+    """최소 구독 tier를 요구하는 의존성"""
+
+    async def _checker(user: CurrentUser):
+        user_tier = getattr(user, "tier", "FREE")
+        if TIER_ORDER.get(user_tier, 0) < TIER_ORDER.get(min_tier, 0):
+            raise HTTPException(
+                status_code=403,
+                detail=f"{min_tier} 이상 구독이 필요합니다.",
+            )
+        return user
+
+    return _checker
+
+
 def require_role(roles: list[str]):
     async def _checker(user: CurrentUser):
         user_role = getattr(user, "role", "editor")
