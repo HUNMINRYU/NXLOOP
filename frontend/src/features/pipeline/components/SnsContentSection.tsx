@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, Button } from '@/components/ui';
+import { Button } from '@/components/ui';
 
 // Types for SNS content
 interface InstagramPost {

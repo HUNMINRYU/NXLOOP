@@ -157,10 +157,17 @@ async def trigger_pipeline(
     init_pipeline_status(task_id, request.product_name)
     background_tasks.add_task(execute_pipeline_task, request, task_id)
 
+    status = PIPELINE_STATUS.get(task_id) or {}
+    process_logs = status.get("process_logs") if isinstance(status, dict) else None
+    if not isinstance(process_logs, list):
+        process_logs = []
+
     return {
         "status": "triggered",
         "task_id": task_id,
         "product": request.product_name,
+        "process_logs": process_logs,
+        "steps": process_logs,
         "timestamp": datetime.now().isoformat(),
     }
 

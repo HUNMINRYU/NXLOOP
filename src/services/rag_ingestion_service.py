@@ -9,9 +9,7 @@ from typing import Any
 from config.settings import get_settings
 from core.interfaces.chatbot import IRAGClient
 from core.models import PipelineResult
-from utils.logger import get_logger
-
-logger = get_logger(__name__)
+from utils.logger import log_error, log_info, log_warning
 
 
 class RagIngestionService:
@@ -355,17 +353,17 @@ class RagIngestionService:
         if not documents:
             return 0
         if not data_store_id:
-            logger.warning("RAG ingestion skipped: data_store_id missing.")
+            log_warning("RAG ingestion skipped: data_store_id missing.")
             return 0
         if hasattr(self._rag_client, "is_configured"):
             try:
                 if not self._rag_client.is_configured():
-                    logger.warning("RAG ingestion skipped: client not configured.")
+                    log_warning("RAG ingestion skipped: client not configured.")
                     return 0
             except Exception:
                 pass
         if not hasattr(self._rag_client, "upsert_documents"):
-            logger.warning("RAG ingestion skipped: upsert_documents not supported.")
+            log_warning("RAG ingestion skipped: upsert_documents not supported.")
             return 0
         max_retries = max(1, int(self._settings.app.rag_ingestion_max_retries or 1))
         backoff = max(0.0, float(self._settings.app.rag_ingestion_backoff_seconds or 0.0))
@@ -382,23 +380,12 @@ class RagIngestionService:
                 )
                 if ingested > 0:
                     if attempt > 1:
-                        logger.info(
-                            "RAG ingestion succeeded after retry.",
-                        )
+                        log_info("RAG ingestion succeeded after retry.")
                     return ingested
-                logger.warning(
-                    "RAG ingestion returned 0 items (attempt %s/%s).",
-                    attempt,
-                    max_retries,
-                )
+                log_warning(f"RAG ingestion returned 0 items (attempt {attempt}/{max_retries}).")
             except Exception as exc:
                 last_error = exc
-                logger.warning(
-                    "RAG ingestion failed (attempt %s/%s): %s",
-                    attempt,
-                    max_retries,
-                    exc,
-                )
+                log_warning(f"RAG ingestion failed (attempt {attempt}/{max_retries}): {exc}")
 
             if attempt < max_retries:
                 sleep_for = backoff * (2 ** (attempt - 1))
@@ -408,9 +395,9 @@ class RagIngestionService:
                     time.sleep(sleep_for)
 
         if last_error:
-            logger.error("RAG ingestion failed after retries: %s", last_error)
+            log_error(f"RAG ingestion failed after retries: {last_error}")
         else:
-            logger.warning("RAG ingestion exhausted retries with zero ingested items.")
+            log_warning("RAG ingestion exhausted retries with zero ingested items.")
         return 0
 
     @staticmethod

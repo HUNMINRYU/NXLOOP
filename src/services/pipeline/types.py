@@ -73,6 +73,7 @@ class Candidate:
     category: str = "general"
     conversation_id: str | None = None
     is_deleted: bool = False
+    is_slop: bool = False
 
     # Pipeline Stages를 거치며 채워짐
     features: CandidateFeatures = field(default_factory=CandidateFeatures)

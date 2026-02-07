@@ -71,12 +71,60 @@ async def chat(
         # Authenticated user - use role-based data store
         data_store_id = settings.rag_data_stores.get(getattr(user, "role", "editor"))
 
-    reply = services.chatbot_service.generate_reply(
+    reply = await services.chatbot_service.generate_reply(
         message=chat_request.message,
         session_id=chat_request.session_id or "",
         data_store_id=data_store_id,
     )
     return reply
+
+
+@router.post("/chat/stream")
+async def chat_stream(
+    chat_request: ChatRequest,
+    http_request: Request,
+    user: OptionalUser = None,
+):
+    """
+    Chat streaming endpoint (SSE).
+    Returns text/event-stream.
+    """
+    from fastapi.responses import StreamingResponse
+
+    services = get_services()
+    settings = get_settings()
+
+    # Get client IP address
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    forwarded_for = http_request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+
+    if user is None:
+        # Non-authenticated user - apply rate limiting
+        if not check_rate_limit(client_ip, max_requests=3):
+            remaining = get_remaining_requests(client_ip, max_requests=3)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Rate limit exceeded. {remaining} requests remaining.",
+            )
+
+        # Use guest data store for non-authenticated users
+        data_store_id = settings.rag_data_stores.get("guest")
+        if not data_store_id:
+            data_store_id = settings.rag_data_stores.get("editor")
+    else:
+        # Authenticated user - use role-based data store
+        data_store_id = settings.rag_data_stores.get(getattr(user, "role", "editor"))
+
+    return StreamingResponse(
+        services.chatbot_service.generate_reply_stream(
+            message=chat_request.message,
+            session_id=chat_request.session_id or "",
+            data_store_id=data_store_id,
+        ),
+        media_type="text/event-stream",
+    )
 
 
 @router.post("/refresh-url")
@@ -106,7 +154,7 @@ async def search_discovery(
     services = get_services()
     settings = get_settings()
     data_store_id = settings.rag_data_stores.get(getattr(user, "role", ""))
-    results = services.discovery_engine_client.search(
+    results = await services.discovery_engine_client.search(
         q,
         max_results=max_results,
         data_store_id=data_store_id,

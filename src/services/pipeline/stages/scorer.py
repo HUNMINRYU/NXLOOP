@@ -10,6 +10,118 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+class SemanticScorer:
+    """
+    X-Algorithm 스타일의 간소화된 참여(engagement) 스코어러.
+
+    Gemini를 통해 아래 3개 확률을 예측하고, 가중치 합으로 final_score를 산출합니다.
+    - p_dwell: 사용자가 3초 이상 머물 확률 (0.0 ~ 1.0)
+    - p_share: 공유할 확률 (0.0 ~ 1.0)
+    - p_action: 댓글/클릭 등 행동할 확률 (0.0 ~ 1.0)
+
+    Score = (p_dwell * 0.5) + (p_share * 0.3) + (p_action * 0.2)
+    score < 0.7 이면 Candidate.is_slop=True 로 마킹합니다.
+    """
+
+    SLOP_THRESHOLD: ClassVar[float] = 0.7
+
+    def __init__(self, gemini_client: IMarketingAIService | None = None) -> None:
+        self.gemini_client = gemini_client
+
+    async def score(
+        self, candidates: list[Candidate], context: dict[str, Any] | None = None
+    ) -> list[Candidate]:
+        if not candidates:
+            return []
+
+        # AI 클라이언트가 없으면(테스트/로컬) 보수적으로 slop 처리
+        if self.gemini_client is None:
+            for c in candidates:
+                self._apply_score(c, p_dwell=0.0, p_share=0.0, p_action=0.0)
+            return sorted(candidates, key=lambda c: c.score.final_score, reverse=True)
+
+        tasks = [self._score_single(candidate) for candidate in candidates]
+        await asyncio.gather(*tasks)
+        return sorted(candidates, key=lambda c: c.score.final_score, reverse=True)
+
+    async def _score_single(self, candidate: Candidate) -> None:
+        prompt = prompt_registry.get("algorithm.semantic_scoring")
+        prompt_text = prompt.render(content=(candidate.content or "")[:2000])
+
+        p_dwell = 0.0
+        p_share = 0.0
+        p_action = 0.0
+        raw_response_preview = ""
+
+        try:
+            response_text = await self.gemini_client.generate_content_async(prompt_text)
+            raw_response_preview = (response_text or "")[:500]
+            if not response_text:
+                raise ValueError("빈 응답을 수신했습니다.")
+
+            data = validate_json_output(
+                response_text,
+                required_fields=["p_dwell", "p_share", "p_action"],
+            )
+            if "error" in data:
+                raise ValueError(data.get("error"))
+
+            p_dwell = self._to_prob(data.get("p_dwell"))
+            p_share = self._to_prob(data.get("p_share"))
+            p_action = self._to_prob(data.get("p_action"))
+
+        except Exception as e:
+            logger.error(f"SemanticScorer 실패 ({candidate.id}): {e}")
+            candidate.metadata["semantic_scorer_error"] = str(e)
+            candidate.metadata["semantic_scorer_raw"] = raw_response_preview
+
+        self._apply_score(candidate, p_dwell=p_dwell, p_share=p_share, p_action=p_action)
+
+    def _apply_score(self, candidate: Candidate, *, p_dwell: float, p_share: float, p_action: float) -> None:
+        final_score = (p_dwell * 0.5) + (p_share * 0.3) + (p_action * 0.2)
+        is_slop = final_score < self.SLOP_THRESHOLD
+
+        candidate.is_slop = is_slop
+        candidate.metadata["semantic_probabilities"] = {
+            "p_dwell": p_dwell,
+            "p_share": p_share,
+            "p_action": p_action,
+        }
+
+        candidate.score = CandidateScore(
+            final_score=round(float(final_score), 4),
+            raw_score=round(float(final_score), 4),
+            positive_score=round(float(final_score), 4),
+            negative_score=0.0,
+            weighted_components={
+                "p_dwell": round(float(p_dwell), 4),
+                "p_share": round(float(p_share), 4),
+                "p_action": round(float(p_action), 4),
+            },
+            explanation=(
+                f"Semantic score={final_score:.3f} "
+                f"(dwell={p_dwell:.2f}, share={p_share:.2f}, action={p_action:.2f})"
+            ),
+        )
+
+        logger.info(
+            "SemanticScorer result "
+            f"id={candidate.id} score={candidate.score.final_score:.4f} "
+            f"p_dwell={p_dwell:.4f} p_share={p_share:.4f} p_action={p_action:.4f} "
+            f"is_slop={candidate.is_slop}"
+        )
+
+    def _to_prob(self, value: Any) -> float:
+        try:
+            f = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        if math.isnan(f) or math.isinf(f):
+            return 0.0
+        return max(0.0, min(1.0, f))
+
+
 class EngagementScorer:
     """
     X-Algorithm의 Weighted Scoring 로직 구현

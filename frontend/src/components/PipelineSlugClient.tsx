@@ -77,7 +77,7 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                     <div className="relative z-10 p-8">
                         <Card className="max-w-2xl w-full text-center p-8 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
                             <h1 className="text-4xl font-bold text-slate-900">Not Found</h1>
-                            <p className="mt-2 text-slate-600">The page you're looking for doesn't exist.</p>
+                            <p className="mt-2 text-slate-600">The page you&apos;re looking for doesn&apos;t exist.</p>
                             <Button asChild className="mt-8 bg-slate-900 hover:bg-slate-800 text-white">
                                 <Link href="/">Back Home</Link>
                             </Button>
@@ -184,16 +184,17 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                                 <SnsContentSection socialPosts={pipeline.socialPosts} />
                             </Card>
                             <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
-                                <h2 className="text-xl font-bold mb-4 text-slate-900">Thumbnails</h2>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {(pipeline.thumbnails.length ? pipeline.thumbnails : DUMMY_THUMBNAILS).map(
-                                        (url, i) => (
-                                            <img
-                                                key={i}
-                                                src={url}
-                                                alt="thumb"
-                                                className="w-full aspect-[9/16] object-cover rounded-md"
-                                            />
+	                                <h2 className="text-xl font-bold mb-4 text-slate-900">Thumbnails</h2>
+	                                <div className="grid grid-cols-2 gap-3">
+	                                    {(pipeline.thumbnails.length ? pipeline.thumbnails : DUMMY_THUMBNAILS).map(
+	                                        (url, i) => (
+	                                            // eslint-disable-next-line @next/next/no-img-element -- 외부/동적 URL(서명 URL 포함)이라 next/image 최적화 적용이 어렵습니다.
+	                                            <img
+	                                                key={i}
+	                                                src={url}
+	                                                alt="thumb"
+	                                                className="w-full aspect-[9/16] object-cover rounded-md"
+	                                            />
                                         ),
                                     )}
                                 </div>
@@ -210,6 +211,7 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                             </Card>
                         </div>
                     )}
+                    </div>
                 </div>
             </main>
         </>

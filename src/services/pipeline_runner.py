@@ -24,6 +24,7 @@ def init_pipeline_status(task_id: str, product_name: str) -> None:
         "status": "queued",
         "product": product_name,
         "message": "작업 대기 중",
+        "process_logs": ["작업 대기 중"],
         "progress": {
             "message": "",
             "percentage": 0,
@@ -39,6 +40,31 @@ def _update_status_impl(task_id: str, fields: dict[str, Any]) -> None:
     if not status:
         return
     status.update(fields)
+    status["updated_at"] = _now_iso()
+
+
+def _append_process_log_impl(task_id: str, message: str) -> None:
+    status = PIPELINE_STATUS.get(task_id)
+    if not status:
+        return
+
+    msg = (message or "").strip()
+    if not msg:
+        return
+
+    logs = status.get("process_logs")
+    if not isinstance(logs, list):
+        logs = []
+
+    last = logs[-1] if logs else None
+    if last != msg:
+        logs.append(msg)
+
+    # 메모리 보호: 최근 200개까지만 유지
+    if len(logs) > 200:
+        logs = logs[-200:]
+
+    status["process_logs"] = logs
     status["updated_at"] = _now_iso()
 
 
@@ -72,6 +98,7 @@ async def execute_pipeline_task(request: PipelineRequest, task_id: str) -> None:
     """실제 파이프라인 실행 비동기 함수"""
     logger.info(f"Automation Pipeline Start: {request.product_name}")
     _update_status_impl(task_id, {"status": "running", "message": "파이프라인 실행 중"})
+    _append_process_log_impl(task_id, "파이프라인 실행 시작")
 
     loop = asyncio.get_running_loop()
 
@@ -126,6 +153,7 @@ async def execute_pipeline_task(request: PipelineRequest, task_id: str) -> None:
                 }
             }
             loop.call_soon_threadsafe(_update_status_impl, task_id, fields)
+            loop.call_soon_threadsafe(_append_process_log_impl, task_id, msg)
 
         # 파이프라인 실행
         result = await pipeline_service.execute(
@@ -142,6 +170,7 @@ async def execute_pipeline_task(request: PipelineRequest, task_id: str) -> None:
             _update_status_impl(
                 task_id, {"status": "success", "message": "파이프라인 완료"}
             )
+            _append_process_log_impl(task_id, "파이프라인 완료")
 
             # 노션 자동 포스팅 실행
             if request.export_to_notion:
@@ -189,6 +218,9 @@ async def execute_pipeline_task(request: PipelineRequest, task_id: str) -> None:
                     "message": result.error_message or "파이프라인 실패",
                 },
             )
+            _append_process_log_impl(
+                task_id, result.error_message or "파이프라인 실패"
+            )
 
     except Exception as e:
         logger.exception(f"Automation Pipeline Exception: {e!s}")
@@ -203,3 +235,4 @@ async def execute_pipeline_task(request: PipelineRequest, task_id: str) -> None:
                 else "Pipeline exception occurred",
             },
         )
+        _append_process_log_impl(task_id, debug_message)

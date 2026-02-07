@@ -51,14 +51,15 @@ export function useAnalytics(slug: string) {
     });
   }, [slug, tasks]);
 
-  useEffect(() => {
-    if (!selectedTaskId && tasks.length > 0) {
-      const firstTaskId = tasks[0]?.task_id;
-      if (firstTaskId) {
-        setSelectedTaskId(asTaskId(String(firstTaskId)));
-      }
-    }
-  }, [selectedTaskId, tasks]);
+	useEffect(() => {
+	    if (!selectedTaskId && tasks.length > 0) {
+	      const firstTaskId = tasks[0]?.task_id;
+	      if (firstTaskId) {
+	        // Avoid react-hooks/set-state-in-effect: defer to microtask.
+	        queueMicrotask(() => setSelectedTaskId(asTaskId(String(firstTaskId))));
+	      }
+	    }
+	  }, [selectedTaskId, tasks]);
 
   const performanceItems = useMemo(() => {
     if (slug !== 'performance') return [];

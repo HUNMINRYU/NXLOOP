@@ -5,7 +5,7 @@ from services.pipeline.side_effects import SideEffectManager
 from services.pipeline.stages.diversity_scorer import MultiFactorDiversityScorer
 from services.pipeline.stages.filter import QualityFilter
 from services.pipeline.stages.hydration import FeatureHydrator
-from services.pipeline.stages.scorer import EngagementScorer
+from services.pipeline.stages.scorer import SemanticScorer
 from services.pipeline.stages.selector import TopInsightSelector
 from services.pipeline.stages.source import CommentSource
 from services.pipeline.types import Candidate
@@ -24,7 +24,7 @@ class PipelineOrchestrator:
         source: CommentSource,
         hydrator: FeatureHydrator,
         quality_filter: QualityFilter,
-        scorer: EngagementScorer,
+        scorer: SemanticScorer,
         diversity_scorer: MultiFactorDiversityScorer,
         selector: TopInsightSelector,
         side_effects: SideEffectManager | None = None,

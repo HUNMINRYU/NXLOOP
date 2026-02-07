@@ -44,7 +44,7 @@ from services.pipeline.orchestrator import PipelineOrchestrator
 from services.pipeline.stages.diversity_scorer import MultiFactorDiversityScorer
 from services.pipeline.stages.filter import QualityFilter
 from services.pipeline.stages.hydration import FeatureHydrator
-from services.pipeline.stages.scorer import EngagementScorer
+from services.pipeline.stages.scorer import SemanticScorer
 from services.pipeline.stages.selector import TopInsightSelector
 from services.pipeline.stages.source import TwoTowerSource
 from services.pipeline_service import PipelineService
@@ -278,7 +278,7 @@ class ServiceContainer:
             source=TwoTowerSource(self.gemini_client),
             hydrator=FeatureHydrator(self.gemini_client),
             quality_filter=QualityFilter(),
-            scorer=EngagementScorer(self.gemini_client),
+            scorer=SemanticScorer(self.gemini_client),
             diversity_scorer=MultiFactorDiversityScorer(),
             selector=TopInsightSelector(),
         )
