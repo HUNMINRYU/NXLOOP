@@ -217,20 +217,16 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                         </div>
                     </div>
 
-                    {isLoading && (
+                    {isLoading ? (
                         <div className="flex flex-col items-center py-20 animate-pulse">
                             <div className="w-12 h-12 rounded-full border-4 border-[var(--color-primary)] border-t-transparent animate-spin mb-4" />
                             <p className="text-sm font-bold text-[var(--color-muted)]">데이터를 불러오는 중입니다...</p>
                         </div>
-                    )}
-
-                    {error && (
+                    ) : error ? (
                         <Card className="p-8 border-rose-500/20 bg-rose-500/5 text-center">
                             <p className="text-sm font-black text-rose-500">{error}</p>
                         </Card>
-                    )}
-
-                    {!isLoading && !error && (
+                    ) : (
                         <div className="space-y-12">
                             {slug === 'video-vault' && (
                                 <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
