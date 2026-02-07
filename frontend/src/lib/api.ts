@@ -481,6 +481,13 @@ export function signup(payload: Record<string, unknown>) {
     });
 }
 
+export function createCheckoutSession(plan: 'PRO' | 'BUSINESS') {
+    return request<{ url: string }>('/api/v1/stripe/create-checkout-session', {
+        method: 'POST',
+        body: JSON.stringify({ plan }),
+    });
+}
+
 export function logout() {
     return request<{ message: string; email?: string }>('/auth/logout', {
         method: 'POST',
