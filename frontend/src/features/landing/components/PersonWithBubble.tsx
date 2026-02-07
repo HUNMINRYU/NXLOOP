@@ -5,7 +5,7 @@ import React from 'react';
 type PersonWithBubbleProps = {
     text: string;
     position: 'above' | 'below';
-    align?: 'left' | 'right';
+    align?: 'left' | 'right' | 'center';
 };
 
 // 뇌/지능을 상징하는 역동적인 AI 아이콘 (애니메이션 효과 포함)
@@ -34,11 +34,13 @@ function AIIcon({ className }: { className?: string }) {
 export default function PersonWithBubble({ text, position, align = 'left' }: PersonWithBubbleProps) {
     const isAbove = position === 'above';
     const isRight = align === 'right';
+    const isCenter = align === 'center';
+
+    const alignmentClass = isCenter ? 'items-center' : isRight ? 'items-end' : 'items-start';
+    const iconMargin = isCenter ? '' : isRight ? 'mr-4' : 'ml-4';
 
     return (
-        <div
-            className={`flex flex-col gap-3 ${isRight ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-4 duration-700`}
-        >
+        <div className={`flex flex-col gap-3 ${alignmentClass} animate-in fade-in slide-in-from-bottom-4 duration-700`}>
             {isAbove ? (
                 <>
                     <div className="relative rounded-2xl border-2 border-slate-100 bg-white px-5 py-4 shadow-xl w-full max-w-[240px] min-h-[100px] flex items-center group-hover:border-[#0ca678]/30 transition-colors">
@@ -50,11 +52,11 @@ export default function PersonWithBubble({ text, position, align = 'left' }: Per
                             aria-hidden
                         />
                     </div>
-                    <AIIcon className="w-10 h-10 ml-4" />
+                    <AIIcon className={`w-10 h-10 ${iconMargin}`} />
                 </>
             ) : (
                 <>
-                    <AIIcon className={`w-11 h-11 ${isRight ? 'mr-4' : 'ml-4'}`} />
+                    <AIIcon className={`w-11 h-11 ${iconMargin}`} />
                     <div className="relative rounded-2xl border-2 border-slate-100 bg-white px-5 py-4 shadow-xl w-full max-w-[240px] min-h-[100px] flex items-center group-hover:border-[#0ca678]/30 transition-colors">
                         <p className="text-[13px] font-bold text-slate-700 break-words leading-relaxed italic">
                             &quot;{text}&quot;
