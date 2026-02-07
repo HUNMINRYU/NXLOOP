@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { createCheckoutSession } from '@/lib/api';
+import { useAuthStore } from '@/store/useAuthStore';
 
 type PlanId = 'FREE' | 'PRO' | 'BUSINESS';
 
@@ -10,6 +11,7 @@ type Plan = {
   id: PlanId;
   name: string;
   price: string;
+  period?: string;
   description: string;
   features: string[];
   ctaLabel: string;
@@ -21,68 +23,80 @@ const plans: Plan[] = [
     id: 'FREE',
     name: 'Free',
     price: '₩0',
-    description: '가볍게 체험하고, 워크플로우를 이해해보세요.',
+    description: 'Explore the basics and understand the workflow.',
     features: [
-      '기본 파이프라인 체험',
-      '핵심 인사이트 샘플 확인',
-      '커뮤니티 지원',
+      'Basic pipeline access',
+      'Sample insight reports',
+      'Community support',
     ],
-    ctaLabel: '시작하기',
+    ctaLabel: 'Get Started',
   },
   {
     id: 'PRO',
     name: 'Professional',
-    price: '₩29,000 / 월',
-    description: '개인/소규모 팀을 위한 실전 자동화.',
+    price: '₩29,000',
+    period: '/ month',
+    description: 'Full automation for individuals and small teams.',
     features: [
-      '고급 인사이트 분석',
-      '썸네일/카피 생성 강화',
-      '우선 지원',
-      '워크플로우 템플릿',
+      'Advanced insight analysis',
+      'Enhanced thumbnail & copy generation',
+      'Priority support',
+      'Workflow templates',
     ],
-    ctaLabel: 'Professional로 업그레이드',
+    ctaLabel: 'Upgrade to Pro',
     highlighted: true,
   },
   {
     id: 'BUSINESS',
     name: 'Business',
-    price: '문의',
-    description: '조직 단위 운영과 확장에 최적화.',
+    price: 'Custom',
+    description: 'Optimized for team-wide operations at scale.',
     features: [
-      '팀/권한 관리',
-      '맞춤형 워크플로우',
-      '전담 지원',
-      'SLA/보안 옵션',
+      'Team & permission management',
+      'Custom workflows',
+      'Dedicated support',
+      'SLA & security options',
     ],
-    ctaLabel: 'Business 시작하기',
+    ctaLabel: 'Contact Sales',
   },
 ];
 
 function PricingCard({
   plan,
+  currentTier,
   loading,
   onCheckout,
 }: {
   plan: Plan;
+  currentTier: string;
   loading: PlanId | null;
   onCheckout: (planId: PlanId) => void;
 }) {
   const isLoading = loading === plan.id;
   const isAnyLoading = loading !== null;
+  const isCurrent = plan.id === currentTier;
 
-  const cardClassName = plan.highlighted
-    ? 'soft-card relative border-2 border-blue-500 shadow-[var(--shadow-soft-lg)]'
-    : 'soft-card';
+  const cardClassName = isCurrent
+    ? 'soft-card relative border-2 border-green-500 shadow-[var(--shadow-soft-lg)]'
+    : plan.highlighted
+      ? 'soft-card relative border-2 border-blue-500 shadow-[var(--shadow-soft-lg)]'
+      : 'soft-card';
 
-  const badge = plan.highlighted ? (
+  const badge = isCurrent ? (
+    <div className="absolute -top-3 left-6 rounded-full bg-green-600 px-3 py-1 text-xs font-bold text-white shadow-[var(--shadow-soft-sm)]">
+      Current Plan
+    </div>
+  ) : plan.highlighted ? (
     <div className="absolute -top-3 left-6 rounded-full bg-blue-600 px-3 py-1 text-xs font-bold text-white shadow-[var(--shadow-soft-sm)]">
       Recommended
     </div>
   ) : null;
 
-  const ctaClassName = plan.highlighted
-    ? 'soft-button-primary w-full justify-center bg-blue-600 hover:opacity-95 focus-visible:ring-blue-600'
-    : 'soft-button-secondary w-full justify-center';
+  const ctaClassName = isCurrent
+    ? 'soft-button-secondary w-full justify-center cursor-default opacity-70'
+    : plan.highlighted
+      ? 'soft-button-primary w-full justify-center bg-blue-600 hover:opacity-95 focus-visible:ring-blue-600'
+      : 'soft-button-secondary w-full justify-center';
 
   return (
     <div className={cardClassName}>
@@ -99,6 +113,9 @@ function PricingCard({
             <div className="text-xl font-black text-[var(--color-foreground)]">
               {plan.price}
             </div>
+            {plan.period && (
+              <div className="text-xs text-[var(--color-muted)]">{plan.period}</div>
+            )}
           </div>
         </div>
 
@@ -112,7 +129,9 @@ function PricingCard({
         </ul>
 
         <div className="mt-8">
-          {plan.id === 'FREE' ? (
+          {isCurrent ? (
+            <div className={ctaClassName}>Current Plan</div>
+          ) : plan.id === 'FREE' ? (
             <Link className={ctaClassName} href="/signup">
               {plan.ctaLabel}
             </Link>
@@ -123,17 +142,8 @@ function PricingCard({
               disabled={isAnyLoading}
               onClick={() => onCheckout(plan.id)}
             >
-              {isLoading ? '결제 페이지로 이동 중...' : plan.ctaLabel}
+              {isLoading ? 'Redirecting...' : plan.ctaLabel}
             </button>
-          )}
-          {plan.id !== 'FREE' && (
-            <p className="mt-2 text-xs text-[var(--color-muted)]">
-              WSL 환경에서는 결제 리다이렉트가 꼬일 수 있어요. 브라우저 주소창은{' '}
-              <span className="font-semibold text-[var(--color-foreground)]">
-                localhost:3000
-              </span>
-              으로 접속해주세요.
-            </p>
           )}
         </div>
       </div>
@@ -142,6 +152,7 @@ function PricingCard({
 }
 
 export default function PricingPage() {
+  const tier = useAuthStore((s) => s.tier);
   const [loading, setLoading] = useState<PlanId | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -153,7 +164,7 @@ export default function PricingPage() {
       const { url } = await createCheckoutSession(planId as 'PRO' | 'BUSINESS');
       window.location.href = url;
     } catch (err) {
-      setError(err instanceof Error ? err.message : '결제 세션 생성에 실패했습니다.');
+      setError(err instanceof Error ? err.message : 'Failed to create checkout session.');
       setLoading(null);
     }
   };
@@ -165,10 +176,10 @@ export default function PricingPage() {
         <div className="mx-auto max-w-6xl px-6 py-16">
           <div className="text-center">
             <h1 className="text-3xl font-black tracking-tight text-[var(--color-foreground)] sm:text-4xl">
-              요금제
+              Pricing
             </h1>
             <p className="mx-auto mt-3 max-w-2xl text-sm leading-7 text-[var(--color-muted)] sm:text-base">
-              목적에 맞는 플랜을 선택하고, Nexloop의 자동화 파이프라인을 바로 시작하세요.
+              Choose the plan that fits your needs and start automating with Nexloop.
             </p>
           </div>
 
@@ -183,31 +194,11 @@ export default function PricingPage() {
               <PricingCard
                 key={plan.id}
                 plan={plan}
+                currentTier={tier}
                 loading={loading}
                 onCheckout={handleCheckout}
               />
             ))}
-          </div>
-
-          <div className="mx-auto mt-10 max-w-3xl rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 text-sm text-[var(--color-muted)] shadow-[var(--shadow-soft-sm)]">
-            <div className="font-semibold text-[var(--color-foreground)]">
-              로컬호스트 연결 주의 (WSL)
-            </div>
-            <div className="mt-1 leading-6">
-              백엔드를 WSL에서 띄우고 Windows 브라우저로 접속할 때{' '}
-              <span className="font-semibold text-[var(--color-foreground)]">
-                127.0.0.1
-              </span>{' '}
-              연결이 꼬일 수 있습니다. Stripe 리다이렉트 URL은{' '}
-              <span className="font-semibold text-[var(--color-foreground)]">
-                http://localhost:3000/payment/success
-              </span>
-              로 설정하고, 브라우저 주소창도 반드시{' '}
-              <span className="font-semibold text-[var(--color-foreground)]">
-                localhost:3000
-              </span>
-              으로 접속해주세요.
-            </div>
           </div>
 
           <div className="mt-10 text-center">
@@ -215,7 +206,7 @@ export default function PricingPage() {
               href="/"
               className="soft-button-secondary inline-flex justify-center"
             >
-              홈으로
+              Back to Home
             </Link>
           </div>
         </div>
