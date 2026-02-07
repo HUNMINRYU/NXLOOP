@@ -30,7 +30,7 @@ def _candidate(content: str = "hello world") -> Candidate:
 
 
 @pytest.mark.asyncio
-async def test_semantic_scorer_computes_final_score_and_marks_slop():
+async def test_semantic_scorer_computes_final_score_and_marks_slop() -> None:
     # 0.8*0.5 + 0.6*0.3 + 0.4*0.2 = 0.66  -> slop
     gemini = _FakeGemini('{"p_dwell": 0.8, "p_share": 0.6, "p_action": 0.4}')
     scorer = SemanticScorer(gemini)  # type: ignore[arg-type]
@@ -56,7 +56,7 @@ async def test_semantic_scorer_computes_final_score_and_marks_slop():
 
 
 @pytest.mark.asyncio
-async def test_semantic_scorer_not_slop_when_score_high_enough():
+async def test_semantic_scorer_not_slop_when_score_high_enough() -> None:
     gemini = _FakeGemini('{"p_dwell": 0.9, "p_share": 0.9, "p_action": 0.9}')
     scorer = SemanticScorer(gemini)  # type: ignore[arg-type]
 
@@ -68,7 +68,7 @@ async def test_semantic_scorer_not_slop_when_score_high_enough():
 
 
 @pytest.mark.asyncio
-async def test_semantic_scorer_clamps_out_of_range_probs():
+async def test_semantic_scorer_clamps_out_of_range_probs() -> None:
     gemini = _FakeGemini('{"p_dwell": 2, "p_share": -1, "p_action": "0.5"}')
     scorer = SemanticScorer(gemini)  # type: ignore[arg-type]
 
@@ -81,7 +81,7 @@ async def test_semantic_scorer_clamps_out_of_range_probs():
 
 
 @pytest.mark.asyncio
-async def test_semantic_scorer_marks_error_when_required_fields_missing():
+async def test_semantic_scorer_marks_error_when_required_fields_missing() -> None:
     gemini = _FakeGemini('{"p_dwell": 0.8}')
     scorer = SemanticScorer(gemini)  # type: ignore[arg-type]
 
@@ -91,3 +91,35 @@ async def test_semantic_scorer_marks_error_when_required_fields_missing():
     assert scored[0].is_slop is True
     assert scored[0].metadata.get("semantic_scorer_error")
     assert scored[0].metadata.get("semantic_scorer_raw") == '{"p_dwell": 0.8}'
+
+
+@pytest.mark.asyncio
+async def test_semantic_scorer_marks_error_on_empty_response() -> None:
+    gemini = _FakeGemini("")
+    scorer = SemanticScorer(gemini)  # type: ignore[arg-type]
+
+    cand = _candidate("empty response")
+    scored = await scorer.score([cand])
+
+    assert scored[0].is_slop is True
+    assert scored[0].metadata.get("semantic_scorer_error")
+    assert scored[0].metadata.get("semantic_scorer_raw") == ""
+    assert scored[0].metadata.get("semantic_probabilities") == {
+        "p_dwell": 0.0,
+        "p_share": 0.0,
+        "p_action": 0.0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_semantic_scorer_marks_error_on_json_parse_failure() -> None:
+    bad_json = "this is not json"
+    gemini = _FakeGemini(bad_json)
+    scorer = SemanticScorer(gemini)  # type: ignore[arg-type]
+
+    cand = _candidate("bad json")
+    scored = await scorer.score([cand])
+
+    assert scored[0].is_slop is True
+    assert scored[0].metadata.get("semantic_scorer_error")
+    assert scored[0].metadata.get("semantic_scorer_raw") == bad_json
