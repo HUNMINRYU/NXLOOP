@@ -164,24 +164,28 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
 
     useEffect(() => {
         if (slug === 'video-vault') {
-            setVideoItems(
-                videoUrls.map((url) => ({
-                    url,
-                    gcsPath: deriveGcsPathFromUrl(url),
-                    retries: 0,
-                })),
+            queueMicrotask(() =>
+                setVideoItems(
+                    videoUrls.map((url) => ({
+                        url,
+                        gcsPath: deriveGcsPathFromUrl(url),
+                        retries: 0,
+                    })),
+                ),
             );
         }
     }, [videoUrls, slug]);
 
     useEffect(() => {
         if (slug === 'asset-library') {
-            setThumbnailItems(
-                thumbnailUrls.map((url) => ({
-                    url,
-                    gcsPath: deriveGcsPathFromUrl(url),
-                    retries: 0,
-                })),
+            queueMicrotask(() =>
+                setThumbnailItems(
+                    thumbnailUrls.map((url) => ({
+                        url,
+                        gcsPath: deriveGcsPathFromUrl(url),
+                        retries: 0,
+                    })),
+                ),
             );
         }
     }, [thumbnailUrls, slug]);
@@ -249,7 +253,7 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                     <div className="relative z-10 p-8 pt-24">
                         <Card className="max-w-2xl w-full text-center border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
                             <h1 className="text-4xl font-bold mb-4 text-slate-900">Not Found</h1>
-                            <p className="text-slate-600 mb-6">The page you're looking for doesn't exist.</p>
+                            <p className="text-slate-600 mb-6">The page you&apos;re looking for doesn&apos;t exist.</p>
                             <Button asChild variant="secondary" className="bg-slate-900 hover:bg-slate-800 text-white">
                                 <Link href="/">Back to Home</Link>
                             </Button>
@@ -459,15 +463,16 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                                             </p>
                                         </div>
                                     ) : (
-                                        thumbnailItems.map((item, idx) => (
-                                            <div key={`${item.url}-${idx}`} className="group relative">
-                                                <Card className="p-0 overflow-hidden border-slate-200/60 bg-white/80 backdrop-blur-xl transition-all hover:scale-[1.05] hover:shadow-xl hover:shadow-slate-300/50 shadow-lg shadow-slate-200/50">
-                                                    <img
-                                                        src={item.url}
-                                                        alt={`thumb-${idx}`}
-                                                        className="w-full aspect-[9/16] object-cover"
-                                                        onError={() => {
-                                                            if (item.retries < 2)
+	                                        thumbnailItems.map((item, idx) => (
+	                                            <div key={`${item.url}-${idx}`} className="group relative">
+	                                                <Card className="p-0 overflow-hidden border-slate-200/60 bg-white/80 backdrop-blur-xl transition-all hover:scale-[1.05] hover:shadow-xl hover:shadow-slate-300/50 shadow-lg shadow-slate-200/50">
+	                                                    {/* eslint-disable-next-line @next/next/no-img-element -- 외부/동적 URL(서명 URL 포함)이라 next/image 최적화 적용이 어렵습니다. */}
+	                                                    <img
+	                                                        src={item.url}
+	                                                        alt={`thumb-${idx}`}
+	                                                        className="w-full aspect-[9/16] object-cover"
+	                                                        onError={() => {
+	                                                            if (item.retries < 2)
                                                                 handleRefreshMedia('thumb', idx, item.gcsPath);
                                                         }}
                                                     />

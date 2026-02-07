@@ -60,7 +60,8 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: "DM Sans", sans-serif;
+  font-family: "Outfit", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", "Apple Color Emoji",
+    "Segoe UI Emoji";
 }
 
 /* ========== Soft UI Components (신규, 권장) ========== */

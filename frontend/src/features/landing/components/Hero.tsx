@@ -42,9 +42,9 @@ export default function Hero({ demoUrl }: HeroProps) {
           NEX<span className="text-transparent bg-clip-text bg-gradient-to-r from-[#0ca678] via-[#6366f1] to-[#0ca678]">LOOP</span>
         </h1>
         <p className="text-lg sm:text-2xl font-medium mb-12 max-w-2xl mx-auto px-2 text-white/90">
-          Set your goals, then let Gemini's intelligence bridge the gap. Your
-          video is already ready.
-        </p>
+	          Set your goals, then let Gemini&apos;s intelligence bridge the gap. Your
+	          video is already ready.
+	        </p>
         <div className="flex flex-col gap-4 sm:gap-6 items-center">
           <div className="flex flex-wrap gap-4 sm:gap-6 justify-center">
             <Tooltip content="Start with NEXLOOP pipeline" position="bottom">

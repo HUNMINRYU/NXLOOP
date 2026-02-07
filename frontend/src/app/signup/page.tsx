@@ -3,23 +3,9 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { signup } from '@/lib/api';
+import { fetchMe, signup } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { useAuthStore } from '@/store/useAuthStore';
-
-// JWT 토큰에서 payload 디코딩
-const decodeJwtPayload = (token: string) => {
-    try {
-        const payload = token.split('.')[1];
-        if (!payload) return null;
-        const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-        const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
-        const json = atob(padded);
-        return JSON.parse(json);
-    } catch {
-        return null;
-    }
-};
 
 export default function SignUpPage() {
     const [formData, setFormData] = useState({
@@ -48,19 +34,9 @@ export default function SignUpPage() {
         setIsLoading(true);
         setMessage('');
         try {
-            const response = await signup(formData);
-
-            // JWT 토큰에서 사용자 정보 추출
-            const payload = decodeJwtPayload(response.token);
-            const userEmail = payload?.sub ?? formData.email;
-            const userRole = payload?.role ?? 'editor';
-
-            // Zustand store를 통해 토큰 저장
-            setAuth({
-                token: response.token,
-                email: userEmail,
-                role: userRole,
-            });
+            await signup(formData);
+            const me = await fetchMe();
+            setAuth({ email: me.email, role: me.role, name: me.name });
 
             router.push('/');
         } catch (error: unknown) {

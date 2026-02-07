@@ -38,7 +38,14 @@ export default function NotionSlot() {
         <Input placeholder="history_id (선택)" value={historyId} onChange={(e) => setHistoryId(e.target.value)} className="bg-white border-slate-200 focus:ring-indigo-500/30 focus:border-indigo-500 text-slate-900" />
         <Input className="md:col-span-2 bg-white border-slate-200 focus:ring-indigo-500/30 focus:border-indigo-500 text-slate-900" placeholder="parent_page_id (선택)" value={parentPageId} onChange={(e) => setParentPageId(e.target.value)} />
       </div>
-      <Button variant="default" onClick={handleNotionExport} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">Notion 내보내기 실행</Button>
+      <Button
+        variant="default"
+        onClick={handleNotionExport}
+        disabled={isPending}
+        className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+      >
+        {isPending ? '내보내는 중...' : 'Notion 내보내기 실행'}
+      </Button>
       {notionUrl && (
         <a href={notionUrl} target="_blank" rel="noreferrer" className="block font-medium text-indigo-600 hover:text-indigo-700 underline mt-2 transition-colors">Notion 링크 열기</a>
       )}

@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { Card } from '@/components/ui/Card';
 
 /* 9:16 portrait - 시뮬레이션 이미지 (Generate Video 섹션) */
 export const SLIDER_GIFS = [

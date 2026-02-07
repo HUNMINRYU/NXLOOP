@@ -25,7 +25,8 @@ export default function CacheSlot() {
   };
 
   useEffect(() => {
-    refreshCacheStats();
+    // Avoid react-hooks/set-state-in-effect: defer to microtask.
+    queueMicrotask(() => void refreshCacheStats());
   }, []);
 
   const handleCacheClear = async () => {

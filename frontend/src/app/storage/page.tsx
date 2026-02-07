@@ -7,30 +7,6 @@ import { Navbar } from '@/features/landing';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
-const storageCategories = [
-    {
-        id: 'video-vault',
-        title: 'Video Vault',
-        description: 'Storage for completed short-form videos and generated creative clips.',
-        icon: Film,
-        color: 'from-[#0ca678] to-[#12b886]',
-    },
-    {
-        id: 'asset-library',
-        title: 'Asset Library',
-        description: 'Management of generated thumbnails, multi-factor images, and source assets.',
-        icon: Images,
-        color: 'from-[#6366f1] to-[#818cf8]',
-    },
-    {
-        id: 'prompt-log',
-        title: 'Prompt Log',
-        description: 'History and cache management of successful prompts and AI responses.',
-        icon: FileText,
-        color: 'from-[#f59e0b] to-[#fbbf24]',
-    },
-];
-
 export default function StorageLandingPage() {
     return (
         <>

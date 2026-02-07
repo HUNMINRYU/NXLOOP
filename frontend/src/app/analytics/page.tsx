@@ -71,7 +71,7 @@ export default function AnalyticsLandingPage() {
                             Analytics Center
                         </h1>
                         <p className="font-body text-xl text-slate-600 max-w-2xl leading-relaxed font-medium">
-                            Visualize your marketing impact. Leverage Gemini's analytical power to decode viewer
+                            Visualize your marketing impact. Leverage Gemini&apos;s analytical power to decode viewer
                             behavior and optimize your content strategy.
                         </p>
                     </div>

@@ -26,6 +26,7 @@ export default function Footer() {
           <h4 className="text-sm font-black mb-8 text-white uppercase tracking-[0.2em]">Service</h4>
           <ul className="space-y-4 font-bold">
             <li><a href="#pipeline" className="hover:text-[#0ca678] transition-colors">Pipeline</a></li>
+            <li><a href="/pricing" className="hover:text-[#0ca678] transition-colors">Pricing</a></li>
             <li><a href="#" className="hover:text-[#0ca678] transition-colors">Archive</a></li>
             <li><a href="#" className="hover:text-[#0ca678] transition-colors">Analytics</a></li>
             <li><a href="#" className="hover:text-[#0ca678] transition-colors">Prompt Lab</a></li>

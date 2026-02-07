@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 
 export default function VideoMessageSection() {
@@ -12,20 +11,16 @@ export default function VideoMessageSection() {
 
       <div className="relative max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 md:gap-20 items-center">
         {/* Left: Video / Visual Container - 9:16 portrait */}
-        <div className="relative transform hover:rotate-1 transition-transform duration-700">
-          <Card className="rounded-[var(--radius-xl)] overflow-hidden bg-white/40 backdrop-blur-xl border border-white/40 p-5 md:p-8 shadow-2xl w-full max-w-[360px] mx-auto lg:mx-0">
-            <div className="flex items-center gap-2 mb-6">
-              <Link href="/" className="text-2xl font-black tracking-tighter">
-                NEX<span className="text-transparent bg-clip-text bg-gradient-to-r from-[#0ca678] to-[#6366f1]">LOOP</span>
-              </Link>
-            </div>
-            {/* Video / Graphic Area - 9:16 portrait (stable image) */}
-            <div className="relative aspect-[9/16] w-full rounded-[var(--radius-lg)] overflow-hidden bg-slate-100 border border-[var(--color-border)] shadow-inner">
-              <img
-                src="https://picsum.photos/360/640?seed=intro"
-                alt="Introducing NEXLOOP"
-                className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 hover:scale-110"
-              />
+	        <div className="relative transform hover:rotate-1 transition-transform duration-700">
+	          <Card className="rounded-[var(--radius-xl)] overflow-hidden bg-white/40 backdrop-blur-xl border border-white/40 p-5 md:p-8 shadow-2xl w-full max-w-[360px] mx-auto lg:mx-0">
+	            {/* Video / Graphic Area - 9:16 portrait (stable image) */}
+		            <div className="relative aspect-[9/16] w-full rounded-[var(--radius-lg)] overflow-hidden bg-slate-100 border border-[var(--color-border)] shadow-inner">
+		              {/* eslint-disable-next-line @next/next/no-img-element -- 원격 데모 이미지(도메인/URL이 가변)라 next/image 적용이 까다롭습니다. */}
+		              <img
+	                src="https://picsum.photos/360/640?seed=intro"
+	                alt="Introducing NEXLOOP"
+	                className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 hover:scale-110"
+	              />
               <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
               <div className="absolute bottom-6 right-6 w-16 h-16 rounded-full bg-white/20 backdrop-blur-md border border-white/40 flex items-center justify-center text-white font-black text-xs tracking-widest shadow-lg hover:scale-110 transition-transform cursor-pointer">
                 PLAY

@@ -3,24 +3,10 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { login } from '@/lib/api';
+import { fetchMe, login } from '@/lib/api';
 import { Button, buttonVariants } from '@/components/ui/Button';
 import { useAuthStore } from '@/store/useAuthStore';
 import { asEmail } from '@/types/common';
-
-// JWT 토큰에서 payload 디코딩
-const decodeJwtPayload = (token: string) => {
-    try {
-        const payload = token.split('.')[1];
-        if (!payload) return null;
-        const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-        const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
-        const json = atob(padded);
-        return JSON.parse(json);
-    } catch {
-        return null;
-    }
-};
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
@@ -40,19 +26,9 @@ export default function LoginPage() {
         setIsLoading(true);
         setMessage('');
         try {
-            const response = await login({ email: asEmail(email), password });
-
-            // JWT 토큰에서 사용자 정보 추출
-            const payload = decodeJwtPayload(response.token);
-            const userEmail = payload?.sub ?? email;
-            const userRole = payload?.role ?? 'editor';
-
-            // Zustand store를 통해 토큰 저장 (자동으로 sessionStorage에 persist)
-            setAuth({
-                token: response.token,
-                email: userEmail,
-                role: userRole,
-            });
+            await login({ email: asEmail(email), password });
+            const me = await fetchMe();
+            setAuth({ email: me.email, role: me.role, name: me.name });
 
             // 원래 가려던 주소가 있다면 그곳으로, 없으면 메인으로
             const redirectTo = searchParams.get('redirect') || '/';

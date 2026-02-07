@@ -42,7 +42,7 @@ export default function AnalyticsSlugClient({ slug }: AnalyticsSlugClientProps) 
           <div className="relative z-10 p-8">
             <div className="max-w-2xl text-center p-8 border border-slate-200/60 bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg shadow-slate-200/50">
               <h1 className="text-4xl font-bold text-slate-900">Not Found</h1>
-              <p className="mt-2 text-slate-600">The page you're looking for doesn't exist.</p>
+              <p className="mt-2 text-slate-600">The page you&apos;re looking for doesn&apos;t exist.</p>
               <Button asChild className="mt-8 bg-slate-900 hover:bg-slate-800 text-white">
                 <Link href="/">Back Home</Link>
               </Button>
