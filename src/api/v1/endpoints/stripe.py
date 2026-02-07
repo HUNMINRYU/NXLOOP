@@ -1,7 +1,10 @@
 import stripe
-from fastapi import APIRouter, Header, HTTPException, Request
-from services.stripe_service import StripeService
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from config.settings import get_settings
+from infrastructure.database.connection import get_db_session
+from services.stripe_service import StripeService
 from utils.logger import get_logger
 
 router = APIRouter()
@@ -13,10 +16,9 @@ settings = get_settings()
 async def stripe_webhook(
     request: Request,
     stripe_signature: str = Header(None),
+    db: AsyncSession = Depends(get_db_session),  # noqa: B008
 ) -> dict[str, str]:
-    """
-    Stripe Webhook 수신 엔드포인트
-    """
+    """Stripe Webhook 수신 엔드포인트"""
     if not settings.stripe_webhook_secret:
         logger.error("Stripe Webhook Secret이 설정되지 않았습니다.")
         raise HTTPException(status_code=500, detail="Webhook configuration error")
@@ -35,6 +37,6 @@ async def stripe_webhook(
         raise HTTPException(status_code=400, detail="Invalid signature") from e
 
     service = StripeService()
-    await service.process_webhook_event(event)
+    await service.process_webhook_event(event, db)
 
     return {"status": "success"}
