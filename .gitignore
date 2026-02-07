@@ -29,6 +29,7 @@ node_modules/
 # IDE
 .idea/
 .vscode/
+.cursor/
 
 # Coverage
 .coverage
@@ -75,9 +76,8 @@ knip_report*.txt
 data/
 outputs/
 docs/
-!docs/troubleshooting/
-!docs/troubleshooting/**
 docs/CSRF_POLICY.md
+docs/plans/
 RULES*.md
 GUARDRAILS.md
 scripts/
