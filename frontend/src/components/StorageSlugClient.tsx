@@ -81,14 +81,14 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
         // 정렬 적용
         result.sort((a, b) => {
             if (sortBy === 'newest') {
-                // created_at 필드가 있다고 가정. 없으면 task_id 기준
-                const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-                const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                // executed_at 필드로 정렬. 없으면 task_id 기준
+                const timeA = a.executed_at ? new Date(a.executed_at).getTime() : 0;
+                const timeB = b.executed_at ? new Date(b.executed_at).getTime() : 0;
                 return timeB - timeA;
             }
             if (sortBy === 'oldest') {
-                const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-                const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                const timeA = a.executed_at ? new Date(a.executed_at).getTime() : 0;
+                const timeB = b.executed_at ? new Date(b.executed_at).getTime() : 0;
                 return timeA - timeB;
             }
             // name 정렬

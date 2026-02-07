@@ -2,12 +2,12 @@
 
 /* ========== Soft UI / Subtle Depth (B2B 권장) ========== */
 @theme {
-  /* Background & Surface */
-  --color-background: #f8fafc;
-  --color-surface: #ffffff;
-  --color-foreground: #0f172a;
-  --color-muted: #64748b;
-  --color-border: #e2e8f0;
+  /* Background & Surface (Dark Theme for Storage) */
+  --color-background: #0f172a;
+  --color-surface: #1e293b;
+  --color-foreground: #f1f5f9;
+  --color-muted: #94a3b8;
+  --color-border: #334155;
   /* Primary (브랜드 1종) */
   --color-primary: #0ca678;
   --color-primary-foreground: #ffffff;
@@ -36,6 +36,10 @@
   --shadow-soft-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.02);
   --shadow-soft-md: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
   --shadow-soft-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+  /* Typography */
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
 }
 
 /* ========== Legacy Neobrutal (호환용, 점진적 제거) ========== */
@@ -60,7 +64,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-body), "DM Sans", sans-serif;
 }
 
 /* ========== Soft UI Components (신규, 권장) ========== */
@@ -126,4 +130,19 @@ body {
 .animate-gradient-x {
   background-size: 200% 200%;
   animation: gradient-x 15s ease infinite;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

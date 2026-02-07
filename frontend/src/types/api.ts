@@ -16,6 +16,7 @@ export interface PipelineResult {
   task_id: TaskId;
   product: string;
   status: 'success' | 'failed';
+  executed_at?: string;  // ISO 8601 timestamp
   result?: PipelineResultDetails;
 }
 
