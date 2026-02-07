@@ -32,6 +32,7 @@ dependencies = [
     # Cloud Run 배포 환경에서 pipeline 단계가 numpy를 import합니다.
     "numpy>=1.26.0",
     "rank-bm25>=0.2.2",
+    "stripe>=8.0.0",
 ]
 
 

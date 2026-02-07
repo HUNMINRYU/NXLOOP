@@ -45,6 +45,7 @@ docs/
 tests/
 *.md
 !README.md
+docs/CSRF_POLICY.md
 
 # Build & Logs
 *.log

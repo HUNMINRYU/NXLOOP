@@ -148,6 +148,10 @@ class AppSettings(BaseSettings):
         default=None,
         validation_alias="STRIPE_SECRET_KEY",
     )
+    stripe_webhook_secret: SecretStr | None = Field(
+        default=None,
+        validation_alias="STRIPE_WEBHOOK_SECRET",
+    )
     database_url: str = Field(
         default="sqlite+aiosqlite:///./data/auth.db",
         validation_alias="DATABASE_URL",
@@ -205,6 +209,15 @@ class Settings:
         return (
             self.app.stripe_secret_key.get_secret_value()
             if self.app.stripe_secret_key
+            else ""
+        )
+
+    @property
+    def stripe_webhook_secret(self) -> str:
+        """Stripe Webhook Secret 반환"""
+        return (
+            self.app.stripe_webhook_secret.get_secret_value()
+            if self.app.stripe_webhook_secret
             else ""
         )
 

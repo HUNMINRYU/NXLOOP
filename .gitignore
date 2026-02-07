@@ -77,7 +77,7 @@ outputs/
 docs/
 !docs/troubleshooting/
 !docs/troubleshooting/**
-!docs/CSRF_POLICY.md
+docs/CSRF_POLICY.md
 RULES*.md
 GUARDRAILS.md
 scripts/

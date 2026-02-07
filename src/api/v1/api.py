@@ -10,6 +10,7 @@ from api.v1.endpoints import (
     products,
     studio,
     webhooks,
+    stripe,
 )
 
 api_router = APIRouter()
@@ -23,5 +24,7 @@ api_router.include_router(
 api_router.include_router(pipeline.router, prefix="/pipeline", tags=["pipeline"])
 api_router.include_router(studio.router, prefix="/studio", tags=["studio"])
 api_router.include_router(webhooks.router, tags=["webhooks"])  # /webhooks/scheduler
+api_router.include_router(stripe.router, prefix="/stripe", tags=["stripe"])  # /stripe/webhook
 api_router.include_router(misc.router, tags=["misc"])
 api_router.include_router(insights.router, tags=["insights"])
+
