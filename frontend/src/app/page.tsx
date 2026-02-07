@@ -12,9 +12,26 @@ import { SLIDER_GIFS, SLIDER_IMAGES } from '@/features/landing/components/Slider
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-[var(--color-background)] selection:bg-[#0ca678] selection:text-white">
+    <main className="relative min-h-screen overflow-hidden selection:bg-[#0ca678] selection:text-white">
+      {/* Light Elegant Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-slate-100" />
+      <div className="absolute inset-0 bg-gradient-to-tr from-teal-500/[0.02] via-transparent to-indigo-500/[0.02]" />
+      <div
+        className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage: `
+            linear-gradient(to right, rgb(15 23 42 / 0.08) 1px, transparent 1px),
+            linear-gradient(to bottom, rgb(15 23 42 / 0.08) 1px, transparent 1px)
+          `,
+          backgroundSize: '80px 80px',
+        }}
+      />
+      <div className="absolute top-20 -left-20 w-[600px] h-[600px] bg-teal-400/[0.06] blur-[140px] rounded-full" />
+      <div className="absolute bottom-20 -right-20 w-[600px] h-[600px] bg-indigo-400/[0.06] blur-[140px] rounded-full" />
+
+      <div className="relative z-10">
       <Navbar />
-      
+
       <div className="relative">
         <Hero demoUrl="/pipeline/create" />
       </div>
@@ -65,6 +82,7 @@ export default function Home() {
       <LeadCaptureSection />
 
       <Footer />
+      </div>
     </main>
   );
 }

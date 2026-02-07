@@ -95,12 +95,28 @@ export default function InsightsDashboardClient() {
     }, [metrics]);
 
     return (
-        <div className="min-h-screen bg-[#f8fafc] pb-12">
+        <div className="relative min-h-screen overflow-hidden pb-12">
+            {/* Light Elegant Background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-slate-100" />
+            <div className="absolute inset-0 bg-gradient-to-tr from-teal-500/[0.02] via-transparent to-indigo-500/[0.02]" />
+            <div
+                className="absolute inset-0 opacity-[0.03]"
+                style={{
+                    backgroundImage: `
+                        linear-gradient(to right, rgb(15 23 42 / 0.08) 1px, transparent 1px),
+                        linear-gradient(to bottom, rgb(15 23 42 / 0.08) 1px, transparent 1px)
+                    `,
+                    backgroundSize: '80px 80px',
+                }}
+            />
+            <div className="absolute top-20 -left-20 w-[600px] h-[600px] bg-teal-400/[0.06] blur-[140px] rounded-full" />
+            <div className="absolute bottom-20 -right-20 w-[600px] h-[600px] bg-indigo-400/[0.06] blur-[140px] rounded-full" />
+
             <Navbar />
 
-            <main className="max-w-[1400px] mx-auto px-6 pt-24 space-y-6">
+            <main className="relative z-10 max-w-[1400px] mx-auto px-6 pt-24 space-y-6">
                 {/* Top Action Bar: 스크린샷처럼 필터와 액션 버튼 배치 */}
-                <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-4 bg-white/80 backdrop-blur-xl p-4 rounded-xl border border-slate-200/60 shadow-lg shadow-slate-200/50">
                     <div className="flex items-center gap-3">
                         <select className="bg-slate-50 border-none text-sm font-bold p-2 rounded-lg outline-none cursor-pointer">
                             <option>지난 {metricsDays}일간</option>
@@ -144,7 +160,7 @@ export default function InsightsDashboardClient() {
 
                 {/* Top Row: KPI 카드 섹션 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <Card className="p-6 border-none shadow-sm flex flex-col justify-between h-32 relative overflow-hidden">
+                    <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50 flex flex-col justify-between h-32 relative overflow-hidden">
                         <div>
                             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">인사이트 수집량</p>
                             <div className="flex items-baseline gap-2 mt-1">
@@ -159,7 +175,7 @@ export default function InsightsDashboardClient() {
                         </div>
                     </Card>
 
-                    <Card className="p-6 border-none shadow-sm flex flex-col justify-between h-32 relative overflow-hidden">
+                    <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50 flex flex-col justify-between h-32 relative overflow-hidden">
                         <div>
                             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                                 지식 정확도 (Avg)
@@ -176,7 +192,7 @@ export default function InsightsDashboardClient() {
                         </div>
                     </Card>
 
-                    <Card className="p-6 border-none shadow-sm flex flex-col justify-between h-32 group hover:bg-[#0ca678] transition-colors cursor-pointer">
+                    <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50 flex flex-col justify-between h-32 group hover:bg-[#0ca678] transition-colors cursor-pointer">
                         <div>
                             <p className="text-xs font-bold text-slate-400 group-hover:text-white/70 uppercase tracking-wider">
                                 수집 에러 알림
@@ -218,7 +234,7 @@ export default function InsightsDashboardClient() {
                 {/* Middle Row: 시각화 차트 및 목표 달성률 */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* 채널별 데이터 분포 (Bubble Chart Style placeholder) */}
-                    <Card className="lg:col-span-2 p-6 border-none shadow-sm space-y-4">
+                    <Card className="lg:col-span-2 p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50 space-y-4">
                         <div className="flex items-center justify-between border-b border-slate-50 pb-4">
                             <h4 className="font-black text-slate-800 flex items-center gap-2">
                                 <span className="w-2 h-6 bg-[#0ca678] rounded-full" />
@@ -249,7 +265,7 @@ export default function InsightsDashboardClient() {
                     </Card>
 
                     {/* 목표 달성률 리스트 */}
-                    <Card className="p-6 border-none shadow-sm space-y-6">
+                    <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50 space-y-6">
                         <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
                             <span className="text-xl">🎯</span>
                             <h4 className="font-black text-slate-800">이번 주 전략 달성도</h4>
@@ -310,7 +326,7 @@ export default function InsightsDashboardClient() {
                 </div>
 
                 {/* Bottom Section: 최근 인사이트 수집 테이블 */}
-                <Card className="p-0 border-none shadow-sm overflow-hidden">
+                <Card className="p-0 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50 overflow-hidden">
                     <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-white">
                         <h4 className="font-black text-slate-800 flex items-center gap-2">
                             <span className="w-2 h-6 bg-[#6366f1] rounded-full" />
