@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import get_settings
 from infrastructure.database.models import User
+from services.notification_service import send_email, send_slack_notification
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -91,6 +92,23 @@ class StripeService:
             customer_id,
         )
 
+        # 알림 전송
+        send_slack_notification(
+            f"💳 Checkout completed\n"
+            f"User: {user.email}\n"
+            f"Plan: PRO\n"
+            f"Customer: {customer_id}"
+        )
+        send_email(
+            to=user.email,
+            subject="Payment succeeded - Subscription activated",
+            body=(
+                "Your payment was successful.\n"
+                "Plan: PRO\n"
+                "Thank you for subscribing!"
+            ),
+        )
+
     async def _handle_payment_succeeded(
         self, invoice: dict, db: AsyncSession
     ) -> None:
@@ -107,6 +125,23 @@ class StripeService:
         user.subscription_status = "active"
         await db.commit()
         logger.info("구독 갱신 확인: user=%s", user.email)
+
+        # 알림 전송
+        amount_paid = invoice.get("amount_paid", 0)
+        send_slack_notification(
+            f"🔄 Payment succeeded (renewal)\n"
+            f"User: {user.email}\n"
+            f"Amount: {amount_paid / 100}"
+        )
+        send_email(
+            to=user.email,
+            subject="Payment succeeded - Subscription renewed",
+            body=(
+                f"Your subscription renewal payment was successful.\n"
+                f"Plan: {user.tier}\n"
+                f"Amount: {amount_paid / 100}"
+            ),
+        )
 
     async def _handle_payment_failed(
         self, invoice: dict, db: AsyncSession
@@ -125,6 +160,22 @@ class StripeService:
         await db.commit()
         logger.error("결제 실패 → past_due: user=%s", user.email)
 
+        # 알림 전송
+        send_slack_notification(
+            f"⚠️ Payment failed\n"
+            f"User: {user.email}\n"
+            f"Status: past_due\n"
+            f"Customer: {customer_id}"
+        )
+        send_email(
+            to=user.email,
+            subject="Payment failed - Action required",
+            body=(
+                "Your latest payment could not be processed.\n"
+                "Please update your payment method to keep your subscription active."
+            ),
+        )
+
     async def _handle_subscription_deleted(
         self, subscription: dict, db: AsyncSession
     ) -> None:
@@ -142,3 +193,20 @@ class StripeService:
         user.subscription_status = "canceled"
         await db.commit()
         logger.info("구독 취소 → FREE: user=%s", user.email)
+
+        # 알림 전송
+        send_slack_notification(
+            f"🚫 Subscription canceled\n"
+            f"User: {user.email}\n"
+            f"Status: canceled → FREE\n"
+            f"Customer: {customer_id}"
+        )
+        send_email(
+            to=user.email,
+            subject="Subscription canceled",
+            body=(
+                "Your subscription has been canceled.\n"
+                "Your plan has been downgraded to FREE.\n"
+                "You can re-subscribe anytime from the pricing page."
+            ),
+        )

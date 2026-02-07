@@ -2,7 +2,7 @@
 애플리케이션 상수 정의
 보안 정보 없음 - 순수 상수만 포함
 """
-from typing import Final
+from typing import Any, Final
 
 # 썸네일 스타일
 THUMBNAIL_STYLES: Final[list[str]] = [
@@ -114,3 +114,71 @@ YOUTUBE_LANGUAGES: Final[list[str]] = ["ko", "en"]
 # 이미지 설정
 DEFAULT_ASPECT_RATIO: Final[str] = "16:9"
 SUPPORTED_ASPECT_RATIOS: Final[list[str]] = ["16:9", "9:16", "1:1", "4:3"]
+
+# ── Tier별 기능 정책 ──────────────────────────────────────
+# FREE: 기본 기능 실행 가능, 결과/사용량 제한
+# PRO: 제한 해제형 정액제
+# BUSINESS: 모든 기능 + 팀 관리 + 사용량 기반(token-based) 과금
+TIER_POLICIES: Final[dict[str, dict[str, Any]]] = {
+    "FREE": {
+        "pipeline_run": {
+            "enabled": True,
+            "max_runs_per_day": 1,
+            "preview_only": True,
+        },
+        "chatbot": {
+            "enabled": True,
+            "max_messages_per_day": 10,
+        },
+        "hook_generation": {"enabled": True},
+        "comment_analysis_basic": {"enabled": True},
+        # PRO 이상 필요 (FREE에서 실행 불가)
+        "video_generate": {"enabled": False},
+        "video_extend": {"enabled": False},
+        "thumbnail_compare": {"enabled": False},
+        "studio": {"enabled": False},
+        "deep_analysis": {"enabled": False},
+        "ctr_predict": {"enabled": False},
+        "strategy_analysis": {"enabled": False},
+        "discovery_search": {"enabled": False},
+        "notion_export": {"enabled": False},
+    },
+    "PRO": {
+        "pipeline_run": {
+            "enabled": True,
+            "max_runs_per_day": 50,
+            "preview_only": False,
+        },
+        "chatbot": {
+            "enabled": True,
+            "max_messages_per_day": None,  # 무제한
+        },
+        "hook_generation": {"enabled": True},
+        "comment_analysis_basic": {"enabled": True},
+        "video_generate": {"enabled": True},
+        "video_extend": {"enabled": True},
+        "thumbnail_compare": {"enabled": True},
+        "studio": {"enabled": True},
+        "deep_analysis": {"enabled": True},
+        "ctr_predict": {"enabled": True},
+        "strategy_analysis": {"enabled": True},
+        "discovery_search": {"enabled": True},
+        "notion_export": {"enabled": True},
+    },
+    "BUSINESS": {
+        "billing_model": "token_based",
+        "all_features": True,
+        "team_management": True,
+        "audit_logs": True,
+        "custom_workflows": True,
+        "pipeline_run": {
+            "enabled": True,
+            "max_runs_per_day": None,  # 무제한
+            "preview_only": False,
+        },
+        "chatbot": {
+            "enabled": True,
+            "max_messages_per_day": None,
+        },
+    },
+}

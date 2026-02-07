@@ -1,9 +1,10 @@
 import json
 from datetime import datetime
+from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
-from api.deps import CurrentUser, OptionalUser
+from api.deps import OptionalUser, require_tier
 from config.dependencies import get_services
 from config.settings import get_settings
 from schemas.requests import ChatRequest, LeadRequest, RefreshUrlRequest
@@ -147,7 +148,7 @@ async def refresh_signed_url(request: RefreshUrlRequest):
 @router.get("/search/discovery")
 async def search_discovery(
     q: str,
-    user: CurrentUser,
+    user: Annotated[Any, Depends(require_tier("PRO"))],
     background_tasks: BackgroundTasks,
     max_results: int = 5,
 ):

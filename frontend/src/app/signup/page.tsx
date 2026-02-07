@@ -36,7 +36,13 @@ export default function SignUpPage() {
         try {
             await signup(formData);
             const me = await fetchMe();
-            setAuth({ email: me.email, role: me.role, name: me.name });
+            setAuth({
+                email: me.email,
+                role: me.role,
+                name: me.name,
+                tier: me.tier ?? 'FREE',
+                subscriptionStatus: me.subscription_status ?? 'none',
+            });
 
             router.push('/');
         } catch (error: unknown) {

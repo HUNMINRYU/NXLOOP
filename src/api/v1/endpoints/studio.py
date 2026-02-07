@@ -1,7 +1,9 @@
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from api.deps import require_tier
 from services.studio_service import StudioService
 
 router = APIRouter()
@@ -33,10 +35,12 @@ class RefineRequest(BaseModel):
 
 @router.post("/draft")
 async def create_draft(
-    request: DraftRequest, service: StudioService = Depends(get_studio_service)
+    request: DraftRequest,
+    user: Annotated[Any, Depends(require_tier("PRO"))],
+    service: StudioService = Depends(get_studio_service),  # noqa: B008
 ):
     """
-    제품 정보를 바탕으로 스튜디오용 초안 프롬프트 생성
+    제품 정보를 바탕으로 스튜디오용 초안 프롬프트 생성 (PRO 이상)
     """
     try:
         result = await service.generate_draft_prompts(
@@ -51,15 +55,17 @@ async def create_draft(
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/refine")
 async def refine_prompt(
-    request: RefineRequest, service: StudioService = Depends(get_studio_service)
+    request: RefineRequest,
+    user: Annotated[Any, Depends(require_tier("PRO"))],
+    service: StudioService = Depends(get_studio_service),  # noqa: B008
 ):
     """
-    사용자의 피드백을 반영하여 프롬프트를 실시간으로 고도화
+    사용자의 피드백을 반영하여 프롬프트를 실시간으로 고도화 (PRO 이상)
     """
     try:
         result = await service.refine_prompt(
@@ -69,4 +75,4 @@ async def refine_prompt(
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

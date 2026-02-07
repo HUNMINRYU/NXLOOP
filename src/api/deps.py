@@ -58,7 +58,7 @@ def require_tier(min_tier: str):
         if TIER_ORDER.get(user_tier, 0) < TIER_ORDER.get(min_tier, 0):
             raise HTTPException(
                 status_code=403,
-                detail=f"{min_tier} 이상 구독이 필요합니다.",
+                detail=f"This feature requires a {min_tier} subscription or higher.",
             )
         return user
 

@@ -85,17 +85,6 @@ export default function PaymentSuccessPage() {
               요금제 다시 보기
             </Link>
           </div>
-
-          <div className="mt-8 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-teal-light)] p-4 text-left text-sm text-[var(--color-foreground)]">
-            <div className="font-semibold">WSL/localhost 팁</div>
-            <div className="mt-1 leading-6 text-[var(--color-muted)]">
-              Stripe 리다이렉트가 꼬이면 브라우저 주소창이{' '}
-              <span className="font-semibold text-[var(--color-foreground)]">
-                localhost:3000
-              </span>
-              인지 확인해 주세요.
-            </div>
-          </div>
         </div>
       </div>
     </main>

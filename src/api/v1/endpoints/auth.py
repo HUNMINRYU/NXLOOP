@@ -79,7 +79,13 @@ async def signup(request: AuthSignupRequest, http_response: Response, http_reque
     csrf_token = services.auth_service.new_csrf_token()
     _set_auth_cookies(http_response, http_request, session_id=sess.id, csrf_token=csrf_token)
     log_info(f"   🔐 [회원가입] 세션 생성: {user.email}, 세션ID: {sess.id[:8]}...")
-    return {"email": user.email, "role": user.role, "name": user.name}
+    return {
+        "email": user.email,
+        "role": user.role,
+        "name": user.name,
+        "tier": getattr(user, "tier", "FREE"),
+        "subscription_status": getattr(user, "subscription_status", "none"),
+    }
 
 
 @router.post("/login")
@@ -95,7 +101,13 @@ async def login(request: AuthLoginRequest, http_response: Response, http_request
     csrf_token = services.auth_service.new_csrf_token()
     _set_auth_cookies(http_response, http_request, session_id=sess.id, csrf_token=csrf_token)
     log_info(f"   🔐 [로그인] 세션 생성: {user.email}, 세션ID: {sess.id[:8]}...")
-    return {"email": user.email, "role": user.role, "name": user.name}
+    return {
+        "email": user.email,
+        "role": user.role,
+        "name": user.name,
+        "tier": getattr(user, "tier", "FREE"),
+        "subscription_status": getattr(user, "subscription_status", "none"),
+    }
 
 
 @router.post("/logout")

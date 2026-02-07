@@ -28,7 +28,13 @@ export default function LoginPage() {
         try {
             await login({ email: asEmail(email), password });
             const me = await fetchMe();
-            setAuth({ email: me.email, role: me.role, name: me.name });
+            setAuth({
+                email: me.email,
+                role: me.role,
+                name: me.name,
+                tier: me.tier ?? 'FREE',
+                subscriptionStatus: me.subscription_status ?? 'none',
+            });
 
             // 원래 가려던 주소가 있다면 그곳으로, 없으면 메인으로
             const redirectTo = searchParams.get('redirect') || '/';

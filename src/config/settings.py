@@ -186,6 +186,13 @@ class AppSettings(BaseSettings):
         validation_alias="RAG_INGESTION_JITTER_SECONDS",
     )
 
+    # ── 알림 설정 ──
+    env: str = Field(default="development", validation_alias="ENV")
+    slack_webhook_url: str = Field(default="", validation_alias="SLACK_WEBHOOK_URL")
+    test_email_allowlist_raw: str = Field(
+        default="", validation_alias="TEST_EMAIL_ALLOWLIST"
+    )
+
 
 class Settings:
     """통합 설정 클래스"""
@@ -255,6 +262,24 @@ class Settings:
         if isinstance(data, dict):
             return {str(k): str(v) for k, v in data.items()}
         return {}
+
+    @property
+    def env(self) -> str:
+        """실행 환경 (development / test / production)"""
+        return self.app.env
+
+    @property
+    def slack_webhook_url(self) -> str:
+        """Slack Incoming Webhook URL"""
+        return self.app.slack_webhook_url
+
+    @property
+    def test_email_allowlist(self) -> set[str]:
+        """테스트 환경에서 이메일 발송을 허용할 주소 목록"""
+        raw = self.app.test_email_allowlist_raw
+        if not raw:
+            return set()
+        return {e.strip() for e in raw.split(",") if e.strip()}
 
     def has_notion_api_key(self) -> bool:
         """Notion API 키 설정 여부"""

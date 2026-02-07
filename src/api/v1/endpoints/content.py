@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from typing import Annotated, Any
 
-from api.deps import CurrentUser
+from fastapi import APIRouter, Depends, HTTPException
+
+from api.deps import require_tier
 from config.dependencies import get_services
 from config.products import get_product_by_name
 from core.exceptions import ThumbnailGenerationError
@@ -60,7 +62,7 @@ async def generate_hooks(request: HookGenerateRequest):
 @router.post("/thumbnail/compare-styles")
 async def generate_thumbnail_compare_styles(
     request: ThumbnailCompareRequest,
-    user: CurrentUser,
+    user: Annotated[Any, Depends(require_tier("PRO"))],
 ):
     """같은 훅으로 여러 스타일 썸네일을 한 번에 생성해 비교용으로 반환"""
     services = get_services()
@@ -168,7 +170,10 @@ async def get_video_presets():
 
 
 @router.post("/video/generate")
-async def generate_video(request: VideoGenerateRequest, user: CurrentUser):
+async def generate_video(
+    request: VideoGenerateRequest,
+    user: Annotated[Any, Depends(require_tier("PRO"))],
+):
     services = get_services()
     product = get_product_by_name(request.product_name)
     if not product:
@@ -273,7 +278,10 @@ async def generate_video(request: VideoGenerateRequest, user: CurrentUser):
 
 
 @router.post("/video/extend")
-async def extend_video(request: VideoExtendRequest, user: CurrentUser):
+async def extend_video(
+    request: VideoExtendRequest,
+    user: Annotated[Any, Depends(require_tier("PRO"))],
+):
     services = get_services()
     from config.settings import get_settings
 

@@ -7,7 +7,7 @@ from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from api.deps import CurrentUser, require_role
+from api.deps import CurrentUser, require_role, require_tier
 from config.dependencies import get_services
 from config.products import get_product_by_name
 from core.audit import record_audit_log
@@ -242,7 +242,10 @@ async def update_pipeline_status_endpoint(
 
 
 @router.post("/analysis/strategy")
-async def analyze_strategy(request: AnalysisTaskRequest):
+async def analyze_strategy(
+    request: AnalysisTaskRequest,
+    user: Annotated[Any, Depends(require_tier("PRO"))],
+):
     services = get_services()
     status, result = _get_task_status_and_result(request.task_id)
     strategy = result.get("strategy")
@@ -282,7 +285,10 @@ async def analyze_comments_basic(request: AnalysisTaskRequest):
 
 
 @router.post("/analysis/comments/deep")
-async def analyze_comments_deep(request: AnalysisTaskRequest):
+async def analyze_comments_deep(
+    request: AnalysisTaskRequest,
+    user: Annotated[Any, Depends(require_tier("PRO"))],
+):
     services = get_services()
     _, result = _get_task_status_and_result(request.task_id)
     collected = _extract_collected_data(result)
@@ -295,7 +301,10 @@ async def analyze_comments_deep(request: AnalysisTaskRequest):
 
 
 @router.post("/analysis/ctr-predict")
-async def predict_ctr(request: CTRPredictRequest):
+async def predict_ctr(
+    request: CTRPredictRequest,
+    user: Annotated[Any, Depends(require_tier("PRO"))],
+):
     services = get_services()
     _, result = _get_task_status_and_result(request.task_id)
     collected = _extract_collected_data(result)
@@ -331,7 +340,10 @@ async def predict_ctr(request: CTRPredictRequest):
 
 
 @router.post("/export/notion")
-async def export_notion(request: NotionExportRequest, user: CurrentUser):
+async def export_notion(
+    request: NotionExportRequest,
+    user: Annotated[Any, Depends(require_tier("PRO"))],
+):
     if not request.task_id and not request.history_id:
         raise HTTPException(
             status_code=400, detail="task_id 또는 history_id가 필요합니다."
