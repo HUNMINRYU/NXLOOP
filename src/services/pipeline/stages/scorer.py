@@ -55,7 +55,11 @@ class SemanticScorer:
         raw_response_preview = ""
 
         try:
-            response_text = await self.gemini_client.generate_content_async(prompt_text)
+            gemini_client = self.gemini_client
+            if gemini_client is None:
+                raise RuntimeError("gemini_client가 필요합니다.")
+
+            response_text = await gemini_client.generate_content_async(prompt_text)
             raw_response_preview = (response_text or "")[:500]
             if not response_text:
                 raise ValueError("빈 응답을 수신했습니다.")
@@ -66,6 +70,8 @@ class SemanticScorer:
             )
             if "error" in data:
                 raise ValueError(data.get("error"))
+            if "_validation_warning" in data:
+                raise ValueError(data.get("_validation_warning"))
 
             p_dwell = self._to_prob(data.get("p_dwell"))
             p_share = self._to_prob(data.get("p_share"))
@@ -199,7 +205,11 @@ class EngagementScorer:
 
         try:
             prompt_text = prompt.render(**input_data)
-            response_text = await self.gemini_client.generate_content_async(prompt_text)
+            gemini_client = self.gemini_client
+            if gemini_client is None:
+                raise RuntimeError("gemini_client가 필요합니다.")
+
+            response_text = await gemini_client.generate_content_async(prompt_text)
             if not response_text:
                 raise ValueError("빈 응답을 수신했습니다.")
 

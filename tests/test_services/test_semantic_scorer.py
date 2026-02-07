@@ -13,7 +13,7 @@ class _FakeGemini:
     def __init__(self, response_text: str) -> None:
         self._response_text = response_text
 
-    async def generate_content_async(self, prompt: str) -> str:  # noqa: ARG002
+    async def generate_content_async(self, prompt: str) -> str:
         return self._response_text
 
 
@@ -78,3 +78,16 @@ async def test_semantic_scorer_clamps_out_of_range_probs():
     # clamp: dwell=1.0, share=0.0, action=0.5 -> 0.5 + 0.0 + 0.1 = 0.6
     assert scored[0].score.final_score == pytest.approx(0.6, abs=1e-4)
     assert scored[0].is_slop is True
+
+
+@pytest.mark.asyncio
+async def test_semantic_scorer_marks_error_when_required_fields_missing():
+    gemini = _FakeGemini('{"p_dwell": 0.8}')
+    scorer = SemanticScorer(gemini)  # type: ignore[arg-type]
+
+    cand = _candidate("missing fields")
+    scored = await scorer.score([cand])
+
+    assert scored[0].is_slop is True
+    assert scored[0].metadata.get("semantic_scorer_error")
+    assert scored[0].metadata.get("semantic_scorer_raw") == '{"p_dwell": 0.8}'
