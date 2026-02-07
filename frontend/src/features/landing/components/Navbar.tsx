@@ -128,7 +128,7 @@ export default function Navbar() {
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [scrolled, setScrolled] = useState(false);
     const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const { email: userEmail, role: userRole } = useAuth();
+    const { email: userEmail, role: userRole, tier: userTier } = useAuth();
     const pathname = usePathname();
     const userInitial = userEmail ? userEmail[0]?.toUpperCase() : 'U';
 
@@ -231,6 +231,11 @@ export default function Navbar() {
                                     className={`font-black text-[10px] uppercase tracking-widest ${showDarkNav ? 'text-slate-400' : 'text-white/40'}`}
                                 >
                                     {userRole === 'admin' ? 'Administrator' : 'Member'}
+                                    {userTier !== 'FREE' && (
+                                        <span className={`ml-1.5 ${userTier === 'BUSINESS' ? 'text-purple-500' : 'text-emerald-500'}`}>
+                                            / {userTier}
+                                        </span>
+                                    )}
                                 </span>
                                 <span
                                     className={`font-bold text-sm ${showDarkNav ? 'text-slate-700' : 'text-white/90'}`}
@@ -266,16 +271,28 @@ export default function Navbar() {
                                     </Link>
                                 )}
 
-                                <Link href="/pricing" aria-label="Upgrade">
-                                    <Button
-                                        className={`rounded-full font-bold h-10 px-6 ${
-                                            showDarkNav
-                                                ? 'bg-slate-900 hover:bg-slate-800 text-white'
-                                                : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
-                                        }`}
-                                    >
-                                        Upgrade
-                                    </Button>
+                                <Link href="/pricing" aria-label={userTier === 'FREE' ? 'Upgrade' : userTier}>
+                                    {userTier === 'FREE' ? (
+                                        <Button
+                                            className={`rounded-full font-bold h-10 px-6 ${
+                                                showDarkNav
+                                                    ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                                                    : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+                                            }`}
+                                        >
+                                            Upgrade
+                                        </Button>
+                                    ) : (
+                                        <span
+                                            className={`inline-flex items-center gap-1.5 rounded-full font-bold text-xs h-10 px-5 ${
+                                                userTier === 'BUSINESS'
+                                                    ? 'bg-purple-600 text-white'
+                                                    : 'bg-emerald-600 text-white'
+                                            }`}
+                                        >
+                                            {userTier === 'BUSINESS' ? 'Business' : 'Pro'}
+                                        </span>
+                                    )}
                                 </Link>
                                 <Button
                                     variant={showDarkNav ? 'outline' : 'secondary'}
@@ -394,10 +411,16 @@ export default function Navbar() {
                                 </div>
                                 <Link
                                     href="/pricing"
-                                    className="flex items-center justify-center gap-3 w-full h-14 bg-slate-900 rounded-2xl text-sm font-bold text-white hover:bg-slate-800 transition-all"
+                                    className={`flex items-center justify-center gap-3 w-full h-14 rounded-2xl text-sm font-bold transition-all ${
+                                        userTier === 'FREE'
+                                            ? 'bg-slate-900 text-white hover:bg-slate-800'
+                                            : userTier === 'BUSINESS'
+                                              ? 'bg-purple-600 text-white'
+                                              : 'bg-emerald-600 text-white'
+                                    }`}
                                     onClick={() => setDrawerOpen(false)}
                                 >
-                                    Upgrade
+                                    {userTier === 'FREE' ? 'Upgrade' : `${userTier === 'BUSINESS' ? 'Business' : 'Pro'} Plan`}
                                 </Link>
                                 {userRole === 'admin' && (
                                     <Link
