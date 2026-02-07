@@ -30,27 +30,27 @@ export default function PromptsSlot() {
     }, []);
 
     return (
-        <Card className="p-6">
-            <Card.Title className="mb-4">프롬프트 로그</Card.Title>
+        <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
+            <Card.Title className="mb-4 text-slate-900">프롬프트 로그</Card.Title>
             {isLoading ? (
-                <p className="text-sm text-[var(--color-muted)]">로딩 중...</p>
+                <p className="text-sm text-slate-600 font-medium">로딩 중...</p>
             ) : promptLogs.length === 0 ? (
-                <p className="text-sm text-[var(--color-muted)]">프롬프트 로그가 없습니다.</p>
+                <p className="text-sm text-slate-600 font-medium">프롬프트 로그가 없습니다.</p>
             ) : (
                 <>
                     {promptLogs === DUMMY_PROMPT_LOGS && (
-                        <p className="text-xs text-[var(--color-muted)] mb-2">(더미 데이터)</p>
+                        <p className="text-xs text-slate-500 font-medium mb-2">(더미 데이터)</p>
                     )}
                     <div className="space-y-3">
                         {promptLogs.map((log, index) => (
                             <details
                                 key={`${log.history_id}-${index}`}
-                                className="border border-[var(--color-border)] rounded-[var(--radius-md)] p-3"
+                                className="border border-slate-200 rounded-2xl p-3 bg-slate-50/60 hover:bg-slate-50 transition-colors"
                             >
-                                <summary className="cursor-pointer font-medium text-[var(--color-foreground)]">
+                                <summary className="cursor-pointer font-medium text-slate-900">
                                     {log.product_name || 'N/A'} · {log.executed_at || 'N/A'}
                                 </summary>
-                                <pre className="text-xs mt-3 bg-[var(--color-secondary)] p-3 rounded-[var(--radius-sm)] overflow-auto">
+                                <pre className="text-xs mt-3 bg-slate-100 text-slate-800 p-3 rounded-xl overflow-auto font-mono">
                                     {JSON.stringify(log.prompt_log, null, 2)}
                                 </pre>
                             </details>

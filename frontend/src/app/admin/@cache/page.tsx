@@ -42,23 +42,23 @@ export default function CacheSlot() {
   };
 
   return (
-    <Card className="p-6">
-      <Card.Title className="mb-4">캐시 관리</Card.Title>
+    <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
+      <Card.Title className="mb-4 text-slate-900">캐시 관리</Card.Title>
       {cacheStats ? (
-        <div className="grid gap-2 text-sm text-[var(--color-foreground)] mb-4">
+        <div className="grid gap-2 text-sm text-slate-700 font-medium mb-4">
           <span>Entries: {cacheStats.entries ?? '-'}</span>
           <span>Hits: {cacheStats.hits ?? '-'}</span>
           <span>Misses: {cacheStats.misses ?? '-'}</span>
           <span>Hit Rate: {cacheStats.hit_rate ?? '-'}%</span>
         </div>
       ) : (
-        <p className="text-sm text-[var(--color-muted)] mb-4">캐시 통계를 불러오지 못했습니다.</p>
+        <p className="text-sm text-slate-600 font-medium mb-4">캐시 통계를 불러오지 못했습니다.</p>
       )}
       <div className="flex items-center gap-3">
-        <Button variant="default" onClick={handleCacheClear} disabled={isPending}>
+        <Button variant="default" onClick={handleCacheClear} disabled={isPending} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">
           캐시 초기화
         </Button>
-        {cacheMessage && <span className="text-sm text-[var(--color-muted)]">{cacheMessage}</span>}
+        {cacheMessage && <span className="text-sm text-slate-600 font-medium">{cacheMessage}</span>}
       </div>
     </Card>
   );
