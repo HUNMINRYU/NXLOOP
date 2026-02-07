@@ -73,7 +73,14 @@ def _migrate_users_columns(sync_conn):
     # Stripe 구독 관련 컬럼
     if "stripe_customer_id" not in names:
         sync_conn.execute(
-            text("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT UNIQUE")
+            text("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT")
+        )
+        # SQLite는 ALTER TABLE ADD COLUMN에서 UNIQUE를 지원하지 않으므로 인덱스로 대체
+        sync_conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_stripe_customer_id "
+                "ON users (stripe_customer_id)"
+            )
         )
     if "tier" not in names:
         sync_conn.execute(
