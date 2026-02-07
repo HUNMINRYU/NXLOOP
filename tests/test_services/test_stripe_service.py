@@ -1,14 +1,16 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 import stripe
 from services.stripe_service import StripeService
 
+
 @pytest.fixture
 def mock_stripe_service():
+    """Stripe 서비스 테스트용 fixture (settings mock 포함)"""
     with patch("services.stripe_service.settings") as mock_settings:
-        mock_settings.stripe_secret_key.get_secret_value.return_value = "sk_test_mock"
+        mock_settings.stripe_secret_key = "sk_test_mock"
         service = StripeService()
-        return service
+        yield service
 
 @pytest.mark.asyncio
 async def test_process_webhook_event_checkout_completed(mock_stripe_service):

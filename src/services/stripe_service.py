@@ -1,5 +1,4 @@
 import stripe
-from fastapi import HTTPException
 from config.settings import get_settings
 from utils.logger import get_logger
 

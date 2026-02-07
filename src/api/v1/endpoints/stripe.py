@@ -1,5 +1,5 @@
 import stripe
-from fastapi import APIRouter, Header, Request, HTTPException, Depends
+from fastapi import APIRouter, Header, HTTPException, Request
 from services.stripe_service import StripeService
 from config.settings import get_settings
 from utils.logger import get_logger
@@ -18,7 +18,7 @@ async def stripe_webhook(
     Stripe Webhook 수신 엔드포인트
     """
     if not settings.stripe_webhook_secret:
-        logger.error("Stripe Webhook Secret is not configured.")
+        logger.error("Stripe Webhook Secret이 설정되지 않았습니다.")
         raise HTTPException(status_code=500, detail="Webhook configuration error")
 
     payload = await request.body()
@@ -28,11 +28,11 @@ async def stripe_webhook(
             payload, stripe_signature, settings.stripe_webhook_secret
         )
     except ValueError as e:
-        logger.error(f"Invalid payload: {e}")
-        raise HTTPException(status_code=400, detail="Invalid payload")
-    except stripe.error.SignatureVerificationError as e:
-        logger.error(f"Invalid signature: {e}")
-        raise HTTPException(status_code=400, detail="Invalid signature")
+        logger.error("잘못된 payload: %s", e)
+        raise HTTPException(status_code=400, detail="Invalid payload") from e
+    except stripe.SignatureVerificationError as e:
+        logger.error("잘못된 서명: %s", e)
+        raise HTTPException(status_code=400, detail="Invalid signature") from e
 
     service = StripeService()
     await service.process_webhook_event(event)
