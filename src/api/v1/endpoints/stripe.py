@@ -12,6 +12,10 @@ router = APIRouter()
 logger = get_logger(__name__)
 settings = get_settings()
 
+# 모듈 로드 시 Stripe API 키 설정
+if settings.stripe_secret_key:
+    stripe.api_key = settings.stripe_secret_key
+
 
 @router.post("/create-checkout-session")
 async def create_checkout_session(user: CurrentUser) -> dict[str, str]:
