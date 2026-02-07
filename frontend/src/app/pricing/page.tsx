@@ -1,18 +1,20 @@
+'use client';
+
 import Link from 'next/link';
+import { useState } from 'react';
+import { createCheckoutSession } from '@/lib/api';
+
+type PlanId = 'FREE' | 'PRO' | 'BUSINESS';
 
 type Plan = {
-  id: 'FREE' | 'PRO' | 'BUSINESS';
+  id: PlanId;
   name: string;
   price: string;
   description: string;
   features: string[];
   ctaLabel: string;
-  href?: string;
   highlighted?: boolean;
 };
-
-const proPaymentLink = process.env.NEXT_PUBLIC_STRIPE_PRO_PAYMENT_LINK;
-const businessPaymentLink = process.env.NEXT_PUBLIC_STRIPE_BUSINESS_PAYMENT_LINK;
 
 const plans: Plan[] = [
   {
@@ -26,7 +28,6 @@ const plans: Plan[] = [
       '커뮤니티 지원',
     ],
     ctaLabel: '시작하기',
-    href: '/signup',
   },
   {
     id: 'PRO',
@@ -40,7 +41,6 @@ const plans: Plan[] = [
       '워크플로우 템플릿',
     ],
     ctaLabel: 'Professional로 업그레이드',
-    href: proPaymentLink,
     highlighted: true,
   },
   {
@@ -55,13 +55,20 @@ const plans: Plan[] = [
       'SLA/보안 옵션',
     ],
     ctaLabel: 'Business 시작하기',
-    href: businessPaymentLink,
   },
 ];
 
-function PricingCard({ plan }: { plan: Plan }) {
-  const isExternal = Boolean(plan.href && plan.href.startsWith('http'));
-  const isDisabled = !plan.href;
+function PricingCard({
+  plan,
+  loading,
+  onCheckout,
+}: {
+  plan: Plan;
+  loading: PlanId | null;
+  onCheckout: (planId: PlanId) => void;
+}) {
+  const isLoading = loading === plan.id;
+  const isAnyLoading = loading !== null;
 
   const cardClassName = plan.highlighted
     ? 'soft-card relative border-2 border-blue-500 shadow-[var(--shadow-soft-lg)]'
@@ -105,29 +112,19 @@ function PricingCard({ plan }: { plan: Plan }) {
         </ul>
 
         <div className="mt-8">
-          {isDisabled ? (
-            <button
-              type="button"
-              className={`${ctaClassName} cursor-not-allowed opacity-60`}
-              disabled
-              aria-disabled="true"
-              title="결제 링크가 설정되지 않았습니다."
-            >
-              {plan.ctaLabel}
-            </button>
-          ) : isExternal ? (
-            <a
-              className={ctaClassName}
-              href={plan.href}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {plan.ctaLabel}
-            </a>
-          ) : (
-            <Link className={ctaClassName} href={plan.href!}>
+          {plan.id === 'FREE' ? (
+            <Link className={ctaClassName} href="/signup">
               {plan.ctaLabel}
             </Link>
+          ) : (
+            <button
+              type="button"
+              className={`${ctaClassName} ${isAnyLoading && !isLoading ? 'cursor-not-allowed opacity-60' : ''}`}
+              disabled={isAnyLoading}
+              onClick={() => onCheckout(plan.id)}
+            >
+              {isLoading ? '결제 페이지로 이동 중...' : plan.ctaLabel}
+            </button>
           )}
           {plan.id !== 'FREE' && (
             <p className="mt-2 text-xs text-[var(--color-muted)]">
@@ -145,6 +142,22 @@ function PricingCard({ plan }: { plan: Plan }) {
 }
 
 export default function PricingPage() {
+  const [loading, setLoading] = useState<PlanId | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCheckout = async (planId: PlanId) => {
+    setLoading(planId);
+    setError(null);
+
+    try {
+      const { url } = await createCheckoutSession(planId as 'PRO' | 'BUSINESS');
+      window.location.href = url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '결제 세션 생성에 실패했습니다.');
+      setLoading(null);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[var(--color-background)]">
       <div className="relative overflow-hidden">
@@ -159,9 +172,20 @@ export default function PricingPage() {
             </p>
           </div>
 
+          {error && (
+            <div className="mx-auto mt-6 max-w-md rounded-lg border border-red-300 bg-red-50 p-4 text-center text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
           <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-3">
             {plans.map((plan) => (
-              <PricingCard key={plan.id} plan={plan} />
+              <PricingCard
+                key={plan.id}
+                plan={plan}
+                loading={loading}
+                onCheckout={handleCheckout}
+              />
             ))}
           </div>
 
