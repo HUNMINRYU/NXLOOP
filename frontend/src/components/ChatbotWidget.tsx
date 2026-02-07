@@ -100,6 +100,15 @@ export default function ChatbotWidget() {
                                 30초 만에 무료 회원가입
                             </button>
                             <button
+                                onClick={() => {
+                                    setShowLeadCapture(false);
+                                    window.location.href = '/pricing';
+                                }}
+                                className="w-full bg-white text-slate-800 font-bold py-4 rounded-2xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm active:scale-[0.98]"
+                            >
+                                요금제 보기
+                            </button>
+                            <button
                                 onClick={() => setShowLeadCapture(false)}
                                 className="w-full text-slate-400 font-bold py-2 hover:text-slate-600 transition-all text-sm"
                             >

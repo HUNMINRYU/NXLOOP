@@ -6,7 +6,7 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class IRAGClient(Protocol):
-    def search(
+    async def search(
         self,
         query: str,
         max_results: int = 5,
@@ -14,7 +14,7 @@ class IRAGClient(Protocol):
     ) -> list[dict]:
         ...
 
-    def upsert_documents(
+    async def upsert_documents(
         self,
         documents: list[dict],
         data_store_id: str | None = None,
@@ -27,7 +27,7 @@ class IRAGClient(Protocol):
 
 @runtime_checkable
 class IChatbotService(Protocol):
-    def generate_reply(
+    async def generate_reply(
         self,
         message: str,
         session_id: str | None = None,

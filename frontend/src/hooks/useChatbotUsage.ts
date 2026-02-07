@@ -1,60 +1,51 @@
-'use client';
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
-import { useState, useEffect } from 'react';
+interface ChatbotUsageState {
+    remainingMessages: number;
+    isAuthenticated: boolean;
+    incrementUsage: () => void;
+    resetUsage: () => void;
+    forceExpire: () => void;
+    setAuthenticated: (auth: boolean) => void;
+    checkAuthStatus: () => void;
+}
 
-const CHATBOT_USAGE_KEY = 'chatbot_usage';
-const MAX_FREE_MESSAGES = 3;
+export const useChatbotUsage = create<ChatbotUsageState>()(
+    persist(
+        (set) => ({
+            remainingMessages: 3,
+            isAuthenticated: false,
+            incrementUsage: () => {
+                set((state) => ({
+                    remainingMessages: Math.max(0, state.remainingMessages - 1),
+                }));
+            },
+            resetUsage: () => set({ remainingMessages: 3 }),
+            forceExpire: () => set({ remainingMessages: 0 }),
+            setAuthenticated: (auth: boolean) => set({ isAuthenticated: auth }),
+            checkAuthStatus: () => {
+                if (typeof window !== 'undefined') {
+                    const authStorage = sessionStorage.getItem('auth-storage');
+                    const isAuth = !!authStorage;
+                    set({ isAuthenticated: isAuth });
+                }
+            },
+        }),
+        {
+            name: 'nexloop-chatbot-usage',
+            storage: createJSONStorage(() => localStorage),
+            partialize: (state) => ({ remainingMessages: state.remainingMessages }),
+        },
+    ),
+);
 
-export function useChatbotUsage() {
-    const [usageCount, setUsageCount] = useState<number>(0);
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-
-        // Check authentication status from Zustand persist storage
-        const authStorageRaw = sessionStorage.getItem('auth-storage');
-        let token: string | null = null;
-        if (authStorageRaw) {
-            try {
-                const parsed = JSON.parse(authStorageRaw);
-                token = parsed?.state?.token ?? null;
-            } catch {
-                token = null;
-            }
-        }
-        setIsAuthenticated(Boolean(token));
-
-        // Load usage count for non-authenticated users
-        if (!token) {
-            const count = parseInt(localStorage.getItem(CHATBOT_USAGE_KEY) || '0', 10);
-            setUsageCount(count);
-        }
-    }, []);
-
-    const incrementUsage = () => {
-        if (isAuthenticated) return; // No limit for authenticated users
-
-        const newCount = usageCount + 1;
-        setUsageCount(newCount);
-        localStorage.setItem(CHATBOT_USAGE_KEY, String(newCount));
-    };
-
-    const resetUsage = () => {
-        setUsageCount(0);
-        localStorage.removeItem(CHATBOT_USAGE_KEY);
-    };
-
-    const hasReachedLimit = !isAuthenticated && usageCount >= MAX_FREE_MESSAGES;
-    const remainingMessages = isAuthenticated ? Infinity : Math.max(0, MAX_FREE_MESSAGES - usageCount);
+export const useChatbotStatus = () => {
+    const state = useChatbotUsage();
+    const hasReachedLimit = !state.isAuthenticated && state.remainingMessages <= 0;
 
     return {
-        usageCount,
-        isAuthenticated,
+        ...state,
         hasReachedLimit,
-        remainingMessages,
-        incrementUsage,
-        resetUsage,
-        MAX_FREE_MESSAGES,
     };
-}
+};

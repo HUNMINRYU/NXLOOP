@@ -80,15 +80,24 @@ class GeminiClient:
         self,
         prompt: str,
         temperature: float = 0.7,
+        use_grounding: bool = False,
         max_retries: int = 3,
+        model: str | None = None,
     ) -> str:
         """비동기 텍스트 생성 (sync 호출을 thread로 감싸기)"""
         last_error = None
         for attempt in range(max_retries):
             try:
-                return await asyncio.to_thread(self.generate_text, prompt, temperature)
+                return await asyncio.to_thread(
+                    self.generate_text,
+                    prompt,
+                    temperature=temperature,
+                    use_grounding=use_grounding,
+                    model=model,
+                )
             except Exception as e:
                 last_error = e
+                # ... (error handling logic same as before) ...
                 error_str = str(e).lower()
                 is_rate_limit = any(
                     keyword in error_str for keyword in ["429", "rate limit", "quota"]
@@ -105,14 +114,55 @@ class GeminiClient:
         log_llm_fail("텍스트 생성(비동기)", str(last_error))
         return ""
 
+    async def generate_content_stream(
+        self,
+        prompt: str,
+        temperature: float = 0.7,
+        use_grounding: bool = False,
+        model: str | None = None,
+    ):
+        """비동기 텍스트 생성 (스트리밍)"""
+        from google.genai import types
+
+        client = self._get_client()
+        config = types.GenerateContentConfig(temperature=temperature)
+        target_model = model or self._text_model
+
+        if use_grounding:
+            config.tools = [types.Tool(google_search=types.GoogleSearch())]
+
+        def _get_stream():
+            return client.models.generate_content_stream(
+                model=target_model,
+                contents=prompt,
+                config=config,
+            )
+
+        stream = await asyncio.to_thread(_get_stream)
+        
+        try:
+            for chunk in stream:
+                yield chunk.text
+                await asyncio.sleep(0)
+        except Exception:
+            pass
+
     async def generate_text_async(
         self,
         prompt: str,
         temperature: float = 0.7,
+        use_grounding: bool = False,
         max_retries: int = 3,
+        model: str | None = None,
     ) -> str:
         """generate_content_async 별칭 (호환성 유지)"""
-        return await self.generate_content_async(prompt, temperature, max_retries)
+        return await self.generate_content_async(
+            prompt,
+            temperature=temperature,
+            use_grounding=use_grounding,
+            max_retries=max_retries,
+            model=model,
+        )
 
     def _extract_embedding_values(self, response: Any) -> list[float]:
         """embed_content 응답에서 embedding 벡터(list[float])를 최대한 보수적으로 추출한다."""
@@ -224,16 +274,18 @@ class GeminiClient:
         prompt: str,
         temperature: float = 0.7,
         use_grounding: bool = False,
+        model: str | None = None,
     ) -> str:
         """텍스트 생성 (재시도 로직 적용)"""
         import time as _time
 
         start_time = _time.time()
+        target_model = model or self._text_model
 
         log_llm_request(
             "텍스트 생성",
             details=f"temperature={temperature}, grounding={use_grounding}",
-            model=self._text_model,
+            model=target_model,
             prompt_preview=prompt,
         )
         try:
@@ -249,7 +301,7 @@ class GeminiClient:
             # [AI Product Pattern] Retry Mechanism
             def _api_call():
                 return client.models.generate_content(
-                    model=self._text_model,
+                    model=target_model,
                     contents=prompt,
                     config=config,
                 )

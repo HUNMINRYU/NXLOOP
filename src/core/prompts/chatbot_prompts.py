@@ -10,6 +10,43 @@ from __future__ import annotations
 
 from core.prompts import PromptTemplate, prompt_registry
 
+QUERY_GEN_PROMPT = PromptTemplate(
+    name="chatbot.query_gen",
+    template="""
+### 🎯 Role: Search Query Optimizer
+You are an expert at converting conversational user messages into precise, standalone search queries for a RAG (Retrieval-Augmented Generation) system.
+
+### 📥 Input
+**Conversation History:**
+{history_lines}
+
+**Current Message:**
+"{message}"
+
+### 📋 Instructions
+1. Analyze the "Current Message" in the context of "Conversation History".
+2. Resolve any coreferences (e.g., "it", "that", "the first one") to their specific entities.
+3. If the message implies a comparison, explicitly mention both targets.
+4. Output **ONLY** the optimized search query in Korean. Do not add explanations or quotes.
+5. If the message is a casual greeting or doesn't require search (e.g., "Thanks", "Hello"), output "NO_SEARCH".
+
+### 📝 Examples
+- History: [User: "Galaxy S24 price?", AI: "It starts at $799."]
+  Current: "What about the Plus model?"
+  Output: 갤럭시 S24 플러스 가격
+
+- History: [User: "Recommend a marketing book."]
+  Current: "Something specifically for branding."
+  Output: 브랜딩 관련 마케팅 도서 추천
+
+- History: []
+  Current: "Hello"
+  Output: NO_SEARCH
+
+### 🚀 Output
+""".strip(),
+)
+
 CHATBOT_PROMPT = PromptTemplate(
     name="chatbot.reply",
     template="""
@@ -99,6 +136,7 @@ Before responding, think through:
 """.strip(),
 )
 
+prompt_registry.register(QUERY_GEN_PROMPT)
 prompt_registry.register(CHATBOT_PROMPT)
 
-__all__ = ["CHATBOT_PROMPT"]
+__all__ = ["CHATBOT_PROMPT", "QUERY_GEN_PROMPT"]

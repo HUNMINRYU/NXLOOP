@@ -1,10 +1,9 @@
 ﻿from __future__ import annotations
 
+import asyncio
 from typing import Any
 
-from utils.logger import get_logger
-
-logger = get_logger(__name__)
+from utils.logger import log_error, log_info, log_warning
 
 
 class DiscoveryEngineClient:
@@ -82,14 +81,14 @@ class DiscoveryEngineClient:
     def _build_document_path(parent: str, document_id: str) -> str:
         return f"{parent}/documents/{document_id}"
 
-    def search(
+    async def search(
         self,
         query: str,
         max_results: int = 5,
         data_store_id: str | None = None,
     ) -> list[dict[str, Any]]:
         if not self.is_configured() and not data_store_id:
-            logger.warning("Discovery Engine not configured.")
+            log_warning("Discovery Engine not configured.")
             return []
 
         if not query.strip():
@@ -109,9 +108,10 @@ class DiscoveryEngineClient:
         )
 
         try:
-            response = self._get_client().search(request=request)
+            client = self._get_client()
+            response = await asyncio.to_thread(client.search, request=request)
         except Exception as e:
-            logger.error(f"Discovery Engine search failed: {e}")
+            log_error(f"Discovery Engine search failed: {e}")
             return []
 
         def _safe_struct(value: Any) -> dict[str, Any]:
@@ -174,12 +174,12 @@ class DiscoveryEngineClient:
                 }
             )
 
-        logger.info(
+        log_info(
             f"Discovery Engine search completed: '{query}' -> {len(results)} results"
         )
         return results
 
-    def upsert_documents(
+    async def upsert_documents(
         self,
         documents: list[dict[str, Any]],
         data_store_id: str | None = None,
@@ -188,41 +188,43 @@ class DiscoveryEngineClient:
             return 0
         store_id = data_store_id or self._data_store_id
         if not store_id:
-            logger.warning("Discovery Engine ingest skipped: data_store_id missing.")
+            log_warning("Discovery Engine ingest skipped: data_store_id missing.")
             return 0
 
         try:
             from google.cloud import discoveryengine_v1beta as discoveryengine
         except Exception as exc:
-            logger.error(f"Discovery Engine client unavailable: {exc}")
+            log_error(f"Discovery Engine client unavailable: {exc}")
             return 0
 
         parent = self._build_branch_path(store_id)
         client = self._get_document_client()
-        ingested = 0
 
-        for doc in documents:
-            doc_id = str(doc.get("id") or "").strip()
-            if not doc_id:
-                continue
-            struct_data = doc.get("struct_data") or {}
-            try:
-                document = discoveryengine.Document(id=doc_id, struct_data=struct_data)
-                if hasattr(client, "upsert_document"):
-                    client.upsert_document(parent=parent, document=document)
-                else:
-                    try:
-                        client.create_document(
-                            parent=parent, document=document, document_id=doc_id
-                        )
-                    except Exception:
-                        document.name = self._build_document_path(parent, doc_id)
-                        if hasattr(client, "update_document"):
-                            client.update_document(document=document)
-                        else:
-                            raise
-                ingested += 1
-            except Exception as exc:
-                logger.error(f"Discovery Engine ingest failed for {doc_id}: {exc}")
+        def _batch_upsert():
+            ingested = 0
+            for doc in documents:
+                doc_id = str(doc.get("id") or "").strip()
+                if not doc_id:
+                    continue
+                struct_data = doc.get("struct_data") or {}
+                try:
+                    document = discoveryengine.Document(id=doc_id, struct_data=struct_data)
+                    if hasattr(client, "upsert_document"):
+                        client.upsert_document(parent=parent, document=document)
+                    else:
+                        try:
+                            client.create_document(
+                                parent=parent, document=document, document_id=doc_id
+                            )
+                        except Exception:
+                            document.name = self._build_document_path(parent, doc_id)
+                            if hasattr(client, "update_document"):
+                                client.update_document(document=document)
+                            else:
+                                raise
+                    ingested += 1
+                except Exception as exc:
+                    log_error(f"Discovery Engine ingest failed for {doc_id}: {exc}")
+            return ingested
 
-        return ingested
+        return await asyncio.to_thread(_batch_upsert)

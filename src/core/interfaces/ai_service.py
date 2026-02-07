@@ -24,6 +24,8 @@ class ITextGenerationService(Protocol):
     async def generate_content_async(
         self,
         prompt: str,
+        temperature: float = 0.7,
+        use_grounding: bool = False,
     ) -> str:
         """??? ??? ??"""
         ...
