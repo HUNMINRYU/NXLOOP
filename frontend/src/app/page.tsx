@@ -48,20 +48,20 @@ export default function Home() {
         images={SLIDER_GIFS}
       />
 
-      {/* Social Proof / Stats Section - Glassmorphic Marquee */}
-      <section className="relative py-16 overflow-hidden bg-[#0f172a] border-y border-white/5">
-        <div className="absolute inset-0 bg-gradient-to-r from-[#0ca678]/10 via-transparent to-[#6366f1]/10 pointer-events-none" />
+      {/* Social Proof / Stats Section - Light Marquee */}
+      <section className="relative py-20 overflow-hidden bg-white/60 backdrop-blur-sm border-y border-slate-200/60">
+        <div className="absolute inset-0 bg-gradient-to-r from-teal-500/[0.02] via-transparent to-indigo-500/[0.02] pointer-events-none" />
         <div className="flex whitespace-nowrap animate-marquee py-2">
           {[...Array(10)].map((_, i) => (
-            <span key={i} className="flex items-center text-white/40 text-2xl font-black mx-12 uppercase tracking-[0.2em]">
-              <span className="text-[#0ca678]">Gemini 3.0</span>
-              <span className="mx-6 opacity-20">•</span>
+            <span key={i} className="flex items-center text-slate-400 text-2xl font-black mx-12 uppercase tracking-[0.2em]">
+              <span className="text-teal-600">Gemini 3.0</span>
+              <span className="mx-6 opacity-30">•</span>
               <span>Automated Pipeline</span>
-              <span className="mx-6 opacity-20">•</span>
-              <span className="text-[#6366f1]">VEO 3.1</span>
-              <span className="mx-6 opacity-20">•</span>
+              <span className="mx-6 opacity-30">•</span>
+              <span className="text-indigo-600">VEO 3.1</span>
+              <span className="mx-6 opacity-30">•</span>
               <span>Real-time Analysis</span>
-              <span className="mx-6 opacity-30 ml-12">✦</span>
+              <span className="mx-6 opacity-40 ml-12">✦</span>
             </span>
           ))}
         </div>
