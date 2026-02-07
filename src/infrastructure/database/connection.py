@@ -70,6 +70,25 @@ def _migrate_users_columns(sync_conn):
         sync_conn.execute(text("ALTER TABLE users ADD COLUMN phone_number TEXT"))
     if "job_title" not in names:
         sync_conn.execute(text("ALTER TABLE users ADD COLUMN job_title TEXT"))
+    # Stripe 구독 관련 컬럼
+    if "stripe_customer_id" not in names:
+        sync_conn.execute(
+            text("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT UNIQUE")
+        )
+    if "tier" not in names:
+        sync_conn.execute(
+            text("ALTER TABLE users ADD COLUMN tier TEXT DEFAULT 'FREE' NOT NULL")
+        )
+    if "subscription_status" not in names:
+        sync_conn.execute(
+            text(
+                "ALTER TABLE users ADD COLUMN subscription_status TEXT DEFAULT 'none' NOT NULL"
+            )
+        )
+    if "subscription_end_date" not in names:
+        sync_conn.execute(
+            text("ALTER TABLE users ADD COLUMN subscription_end_date TEXT")
+        )
 
 
 async def _seed_initial_data(async_conn):

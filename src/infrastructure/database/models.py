@@ -29,6 +29,19 @@ class User(Base):
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
     phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     job_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Stripe 구독 관련 필드
+    stripe_customer_id: Mapped[str | None] = mapped_column(
+        String(255), unique=True, nullable=True, index=True
+    )
+    tier: Mapped[str] = mapped_column(
+        String(20), default="FREE", nullable=False, server_default="FREE"
+    )
+    subscription_status: Mapped[str] = mapped_column(
+        String(20), default="none", nullable=False, server_default="none"
+    )
+    subscription_end_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_kst, nullable=False
     )
