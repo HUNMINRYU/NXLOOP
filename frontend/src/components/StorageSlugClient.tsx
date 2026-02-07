@@ -224,13 +224,33 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
         return (
             <>
                 <Navbar />
-                <main className="min-h-screen bg-[var(--color-background)] flex flex-col items-center justify-center p-8 pt-24">
-                    <Card className="max-w-2xl w-full text-center">
-                        <h1 className="text-4xl font-bold mb-4">Not Found</h1>
-                        <Button asChild variant="secondary">
-                            <Link href="/">Back to Home</Link>
-                        </Button>
-                    </Card>
+                <main className="relative min-h-screen overflow-hidden flex flex-col items-center justify-center">
+                    {/* Layer 1: 베이스 그라디언트 */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950" />
+
+                    {/* Layer 2: 그리드 패턴 */}
+                    <div
+                        className="absolute inset-0 opacity-[0.02]"
+                        style={{
+                            backgroundImage: `
+                                linear-gradient(to right, white 1px, transparent 1px),
+                                linear-gradient(to bottom, white 1px, transparent 1px)
+                            `,
+                            backgroundSize: '80px 80px',
+                        }}
+                    />
+
+                    {/* Layer 3: 기본 글로우 (slug 없음) */}
+                    <div className="absolute top-20 left-10 w-[500px] h-[500px] bg-slate-500/10 blur-[120px] rounded-full animate-pulse" />
+
+                    <div className="relative z-10 p-8 pt-24">
+                        <Card className="max-w-2xl w-full text-center">
+                            <h1 className="text-4xl font-bold mb-4">Not Found</h1>
+                            <Button asChild variant="secondary">
+                                <Link href="/">Back to Home</Link>
+                            </Button>
+                        </Card>
+                    </div>
                 </main>
             </>
         );
@@ -239,16 +259,66 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
     return (
         <>
             <Navbar />
-            <main className="min-h-screen bg-[var(--color-background)] p-8 pt-24">
-                <div className="max-w-6xl mx-auto">
+            <main className="relative min-h-screen overflow-hidden">
+                {/* Layer 1: 베이스 그라디언트 */}
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950" />
+
+                {/* Layer 2: 그리드 패턴 */}
+                <div
+                    className="absolute inset-0 opacity-[0.02]"
+                    style={{
+                        backgroundImage: `
+                            linear-gradient(to right, white 1px, transparent 1px),
+                            linear-gradient(to bottom, white 1px, transparent 1px)
+                        `,
+                        backgroundSize: '80px 80px',
+                    }}
+                />
+
+                {/* Layer 3: 글로우 오브들 (slug별 색상) */}
+                {slug === 'video-vault' && (
+                    <>
+                        <div className="absolute top-20 left-10 w-[500px] h-[500px] bg-teal-500/10 blur-[120px] rounded-full animate-pulse" />
+                        <div
+                            className="absolute bottom-20 right-10 w-[500px] h-[500px] bg-indigo-500/10 blur-[120px] rounded-full animate-pulse"
+                            style={{ animationDelay: '1s' }}
+                        />
+                    </>
+                )}
+                {slug === 'asset-library' && (
+                    <>
+                        <div className="absolute top-20 left-10 w-[500px] h-[500px] bg-indigo-500/10 blur-[120px] rounded-full animate-pulse" />
+                        <div
+                            className="absolute bottom-20 right-10 w-[500px] h-[500px] bg-amber-500/10 blur-[120px] rounded-full animate-pulse"
+                            style={{ animationDelay: '1s' }}
+                        />
+                    </>
+                )}
+                {slug === 'prompt-log' && (
+                    <>
+                        <div className="absolute top-20 left-10 w-[500px] h-[500px] bg-amber-500/10 blur-[120px] rounded-full animate-pulse" />
+                        <div
+                            className="absolute bottom-20 right-10 w-[500px] h-[500px] bg-teal-500/10 blur-[120px] rounded-full animate-pulse"
+                            style={{ animationDelay: '1s' }}
+                        />
+                    </>
+                )}
+
+                {/* 콘텐츠 */}
+                <div className="relative z-10 p-8 pt-32">
+                    <div className="max-w-6xl mx-auto">
                     {/* Header Section */}
                     <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
                         <div>
-                            <p className="font-black text-[var(--color-primary)] mb-2 uppercase tracking-widest text-sm opacity-80">
+                            <h2 className="font-display text-[var(--color-primary)] font-semibold uppercase tracking-widest mb-2 opacity-80 text-sm">
                                 Storage / {slug.replace('-', ' ')}
+                            </h2>
+                            <h1 className="font-display text-5xl md:text-6xl font-bold mb-4 tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/40">
+                                {item.title}
+                            </h1>
+                            <p className="font-body text-xl text-[var(--color-muted)] font-medium leading-relaxed">
+                                {item.subtitle}
                             </p>
-                            <h1 className="text-5xl font-black mb-4 tracking-tighter">{item.title}</h1>
-                            <p className="text-xl font-bold text-[var(--color-muted)]">{item.subtitle}</p>
                         </div>
 
                         {/* Filter Section */}
@@ -559,6 +629,7 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                             <Link href="/storage">← RETURN TO STORAGE HUB</Link>
                         </Button>
                     </div>
+                </div>
                 </div>
             </main>
         </>
