@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from api.v1.api import api_router
+from api.middleware.csrf import csrf_protect
 from config.cors import resolve_cors_origins
 from config.settings import get_settings
 from infrastructure.database.connection import init_db
@@ -46,10 +47,15 @@ logger.info(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=False,
+    # 세션 쿠키 인증을 위해 credentials를 허용한다.
+    # 주의: allow_origins="*"는 credentials와 함께 사용할 수 없다.
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 쿠키 기반 인증을 사용하는 엔드포인트는 CSRF 보호가 필요하다.
+app.middleware("http")(csrf_protect)
 
 # Mount API Router
 app.include_router(api_router)

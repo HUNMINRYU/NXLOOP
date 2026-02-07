@@ -140,6 +140,14 @@ class AppSettings(BaseSettings):
     debug: bool = Field(default=False, validation_alias="DEBUG")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
     output_dir: str = Field(default="outputs", validation_alias="OUTPUT_DIR")
+    stripe_publishable_key: str = Field(
+        default="",
+        validation_alias="STRIPE_PUBLISHABLE_KEY",
+    )
+    stripe_secret_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="STRIPE_SECRET_KEY",
+    )
     database_url: str = Field(
         default="sqlite+aiosqlite:///./data/auth.db",
         validation_alias="DATABASE_URL",
@@ -185,6 +193,20 @@ class Settings:
         self.notion = NotionSettings()
         self.models = AIModelSettings()
         self.pipeline = PipelineSettings()
+
+    @property
+    def stripe_publishable_key(self) -> str:
+        """Stripe Publishable Key 반환"""
+        return self.app.stripe_publishable_key
+
+    @property
+    def stripe_secret_key(self) -> str:
+        """Stripe Secret Key 반환"""
+        return (
+            self.app.stripe_secret_key.get_secret_value()
+            if self.app.stripe_secret_key
+            else ""
+        )
 
     @property
     def google_api_key(self) -> str:

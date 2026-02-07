@@ -26,11 +26,12 @@ def resolve_cors_origins(
     """
 
     if cors_origins_env is None:
-        return ["*"] if is_cloud_run else LOCAL_DEV_DEFAULT_ORIGINS
+        # 세션 쿠키 인증(allow_credentials=True)을 사용할 때 wildcard(*)는 브라우저 정책상 동작하지 않는다.
+        # Cloud Run에서도 "조용히 실패"하지 않도록 로컬 기본값으로 fallback 한다.
+        return LOCAL_DEV_DEFAULT_ORIGINS
 
     parsed = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
     if parsed:
         return parsed
 
-    return ["*"] if is_cloud_run else LOCAL_DEV_DEFAULT_ORIGINS
-
+    return LOCAL_DEV_DEFAULT_ORIGINS

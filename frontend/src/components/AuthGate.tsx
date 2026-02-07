@@ -1,89 +1,51 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { fetchMe } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 
-const PUBLIC_PATHS = new Set(['/login', '/signup', '/']);
+// 공개 경로: 로그인 없이 접근 가능한 페이지들
+// 가격 확인 및 결제 성공 페이지는 마케팅/결제 플로우 상 공개가 자연스럽습니다.
+const PUBLIC_PATHS = new Set(['/login', '/signup', '/', '/pricing', '/payment/success']);
 const ADMIN_PATH_PREFIX = '/admin';
-
-type JwtPayload = {
-    sub?: string;
-    role?: string;
-};
-
-const decodeJwtPayload = (token: string): JwtPayload | null => {
-    try {
-        const payload = token.split('.')[1];
-        if (!payload) return null;
-        const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-        const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
-        const json = atob(padded);
-        return JSON.parse(json) as JwtPayload;
-    } catch {
-        return null;
-    }
-};
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const pathname = usePathname();
     const [ready, setReady] = useState(false);
-    const { setAuth, token, role } = useAuthStore();
+    const { setAuth } = useAuthStore();
 
     useEffect(() => {
         // pathname이 없는 초기 시점 방어
         if (!pathname) return;
 
-        // 1. Zustand persist 스토리지에서 토큰 확인
-        // Zustand persist는 'auth-storage' 키에 JSON 형태로 저장됨
-        const authStorageRaw = sessionStorage.getItem('auth-storage');
-        let storedToken: string | null = null;
-
-        if (authStorageRaw) {
-            try {
-                const parsed = JSON.parse(authStorageRaw);
-                storedToken = parsed?.state?.token ?? null;
-            } catch {
-                storedToken = null;
+        const run = async () => {
+            // 1) 공개 경로는 즉시 허용
+            if (PUBLIC_PATHS.has(pathname)) {
+                setReady(true);
+                return;
             }
-        }
 
-        // 토큰 디코딩
-        const payload = storedToken ? decodeJwtPayload(storedToken) : null;
-        const email = payload?.sub ?? null;
-        const userRole = payload?.role ?? null;
+            // 2) 서버 세션 확인(/auth/me)
+            try {
+                const me = await fetchMe();
+                setAuth({ email: me.email, role: me.role, name: me.name });
 
-        // 스토어 업데이트 (값이 다를 때만)
-        if (storedToken !== token) {
-            setAuth({ token: storedToken, email, role: userRole });
-        }
+                // 3) 권한 체크(Admin)
+                if (pathname.startsWith(ADMIN_PATH_PREFIX) && me.role !== 'admin') {
+                    setReady(false);
+                    router.replace('/');
+                    return;
+                }
 
-        const currentRole = userRole || role; // 우선순위: 새로 읽은 값 > 기존 값
-        const currentToken = storedToken || token;
+                setReady(true);
+            } catch {
+                setReady(false);
+                router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
+            }
+        };
 
-        // 2. 공개 경로 체크
-        if (PUBLIC_PATHS.has(pathname)) {
-            setReady(true);
-            return;
-        }
-
-        // 3. 비로그인 처리
-        if (!currentToken) {
-            setReady(false);
-            // 원래 가려던 주소를 쿼리 파라미터로 저장
-            router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
-            return;
-        }
-
-        // 4. 권한 체크 (Admin)
-        if (pathname.startsWith(ADMIN_PATH_PREFIX) && currentRole !== 'admin') {
-            setReady(false);
-            router.replace('/');
-            return;
-        }
-
-        // 통과
-        setReady(true);
-    }, [pathname, router, setAuth, token, role]);
+        void run();
+    }, [pathname, router, setAuth]);
 
     // 준비되지 않았고 공개 경로도 아니라면 렌더링 차단 (NULL 반환)
     // 단, SSR 불일치 방지를 위해 useEffect 이후 ready가 true일 때 렌더링

@@ -41,22 +41,21 @@ type DiscoveryResult = {
     url?: string;
 };
 
-function getAuthHeaders(): Record<string, string> {
-    if (typeof window === 'undefined') {
-        return {};
+function getCookie(name: string): string | null {
+    if (typeof document === 'undefined') return null;
+    const parts = document.cookie.split(';').map((p) => p.trim());
+    const prefix = `${name}=`;
+    for (const p of parts) {
+        if (p.startsWith(prefix)) return decodeURIComponent(p.slice(prefix.length));
     }
-    // Zustand persist 형식에서 토큰 추출
-    const authStorageRaw = sessionStorage.getItem('auth-storage');
-    let token: string | null = null;
-    if (authStorageRaw) {
-        try {
-            const parsed = JSON.parse(authStorageRaw);
-            token = parsed?.state?.token ?? null;
-        } catch {
-            token = null;
-        }
-    }
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    return null;
+}
+
+function getCsrfHeader(method?: string): Record<string, string> {
+    const m = (method || 'GET').toUpperCase();
+    if (m === 'GET' || m === 'HEAD' || m === 'OPTIONS') return {};
+    const token = getCookie('nexloop_csrf');
+    return token ? { 'X-CSRF-Token': token } : {};
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -68,9 +67,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
     const response = await fetch(`${API_BASE_URL}${path}`, {
         ...options,
+        credentials: 'include',
         headers: {
             'Content-Type': 'application/json',
-            ...getAuthHeaders(),
+            ...getCsrfHeader(options.method),
             ...(options.headers || {}),
         } as Record<string, string>,
     });
@@ -80,7 +80,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         if (response.status === 401 && typeof window !== 'undefined' && path !== '/chat') {
             sessionStorage.removeItem('auth-storage');
             if (!window.location.pathname.startsWith('/login')) {
-                window.location.href = '/login';
+                const currentPath = window.location.pathname + window.location.search;
+                window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`;
             }
         }
         if (response.status === 403) {
@@ -104,6 +105,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 export function fetchProducts() {
     return request<{ products: string[] }>('/products/');
+}
+
+export function fetchMe() {
+    return request<{ email: Email; role: string; name: string }>('/auth/me');
 }
 
 export function runPipeline(payload: {
@@ -457,27 +462,32 @@ export function predictCtr(payload: {
 }
 
 export function login(payload: { email: Email; password: string }) {
-    return request<{ token: string }>('/auth/login', {
+    return request<{ email: Email; role: string; name: string }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify(payload),
     });
 }
 
 export function signup(payload: Record<string, unknown>) {
-    return request<{ token: string }>('/auth/signup', {
+    return request<{ email: Email; role: string; name: string }>('/auth/signup', {
         method: 'POST',
         body: JSON.stringify(payload),
     });
 }
 
 export function logout() {
-    return request<{ message: string; email: string }>('/auth/logout', {
+    return request<{ message: string; email?: string }>('/auth/logout', {
         method: 'POST',
     });
 }
 
 export function sendChatMessage(payload: { message: string; session_id: string }) {
-    return request<{ message: string; session_id?: string; card?: Record<string, unknown> }>('/chat', {
+    return request<{
+        message: string;
+        session_id?: string;
+        card?: Record<string, unknown>;
+        sources?: Record<string, unknown>[];
+    }>('/chat', {
         method: 'POST',
         body: JSON.stringify(payload),
     });
@@ -552,7 +562,11 @@ export function createStudioDraft(payload: {
     });
 }
 
-export function refineStudioPrompt(payload: { original_prompt: string; user_feedback: string; brand_kit?: Record<string, unknown> }) {
+export function refineStudioPrompt(payload: {
+    original_prompt: string;
+    user_feedback: string;
+    brand_kit?: Record<string, unknown>;
+}) {
     return request<Record<string, unknown>>('/studio/refine', {
         method: 'POST',
         body: JSON.stringify(payload),

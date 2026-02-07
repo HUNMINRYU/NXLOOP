@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Annotated, Any
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, HTTPException, Request
 
 from config.dependencies import get_services
 from infrastructure.database.connection import get_db_session
@@ -11,13 +11,16 @@ if TYPE_CHECKING:
 
 async def get_current_user(
     session: Annotated[Any, Depends(get_db_session)],
-    authorization: Annotated[str | None, Header()] = None,
+    request: Request,
 ):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Authorization required")
-    token = authorization.split(" ", 1)[1].strip()
+    """세션 쿠키 기반 인증 (HttpOnly)."""
     services = get_services()
-    return await services.auth_service.get_current_user(session, token)
+
+    session_id = request.cookies.get("nexloop_session")
+    if session_id:
+        return await services.auth_service.get_user_by_session_id(session, session_id)
+
+    raise HTTPException(status_code=401, detail="Authentication required")
 
 
 CurrentUser = Annotated[Any, Depends(get_current_user)]
@@ -25,18 +28,18 @@ CurrentUser = Annotated[Any, Depends(get_current_user)]
 
 async def get_current_user_optional(
     session: Annotated[Any, Depends(get_db_session)],
-    authorization: Annotated[str | None, Header()] = None,
+    request: Request,
 ):
     """
     Optional authentication dependency.
     Returns user if authenticated, None otherwise (no exception raised).
     """
-    if not authorization or not authorization.startswith("Bearer "):
-        return None
-    token = authorization.split(" ", 1)[1].strip()
     services = get_services()
     try:
-        return await services.auth_service.get_current_user(session, token)
+        session_id = request.cookies.get("nexloop_session")
+        if session_id:
+            return await services.auth_service.get_user_by_session_id(session, session_id)
+        return None
     except Exception:
         return None
 

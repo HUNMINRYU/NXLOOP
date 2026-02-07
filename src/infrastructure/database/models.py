@@ -190,3 +190,18 @@ class BrandKit(Base):
         onupdate=now_kst,
         nullable=False,
     )
+
+
+class UserSession(Base):
+    """서버 세션(쿠키 기반 인증) 저장 테이블."""
+
+    __tablename__ = "user_sessions"
+
+    # UUID 문자열(쿠키에 저장될 세션 ID)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_kst, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User")

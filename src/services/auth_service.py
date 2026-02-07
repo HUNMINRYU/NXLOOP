@@ -4,14 +4,15 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException
-from jose import JWTError, jwt
 from passlib.context import CryptContext
+from jose import JWTError, jwt
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from infrastructure.database.models import Team, User
+import secrets
+
+from infrastructure.database.models import Team, User, UserSession
 from utils.logger import (
-    get_logger,
     log_info,
     log_input_data,
     log_output_data,
@@ -20,8 +21,6 @@ from utils.logger import (
     log_stage_start,
     log_warning,
 )
-
-logger = get_logger(__name__)
 
 
 class AuthService:
@@ -32,6 +31,8 @@ class AuthService:
         self._expire_hours = expire_hours
         self._algorithm = algorithm
         self._pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        # 서버 세션 TTL(안전장치). 쿠키는 브라우저 종료 시 사라지게 운용한다.
+        self.session_expire_hours = 8
 
     def hash_password(self, plain: str) -> str:
         trimmed = plain.encode("utf-8")[:72]
@@ -42,26 +43,29 @@ class AuthService:
         return self._pwd_context.verify(trimmed, hashed)
 
     def _create_token(self, user: User) -> str:
+        """테스트/내부용 JWT 생성 (role 포함)."""
         now = datetime.now(timezone.utc)
         payload = {
-            "sub": user.email,
-            "uid": user.id,
-            "role": getattr(user, "role", "editor"),
+            "sub": str(user.id),
+            "email": str(user.email),
+            "role": str(user.role),
             "iat": int(now.timestamp()),
             "exp": int((now + timedelta(hours=self._expire_hours)).timestamp()),
         }
-        token = jwt.encode(payload, self._secret, algorithm=self._algorithm)
-        log_info(f"   🔑 JWT 토큰 생성: 사용자 {user.email}, 만료: {self._expire_hours}시간")
-        return token
+        return jwt.encode(payload, self._secret, algorithm=self._algorithm)
 
     def verify_token(self, token: str) -> dict[str, Any]:
+        """JWT 검증 후 payload 반환."""
         try:
             payload = jwt.decode(token, self._secret, algorithms=[self._algorithm])
-            log_info(f"   ✅ 토큰 검증 성공: 사용자 {payload.get('sub', 'N/A')}")
+            if not isinstance(payload, dict):
+                raise HTTPException(status_code=401, detail="Invalid token payload")
             return payload
-        except JWTError as exc:
-            log_warning(f"   ⚠️ 토큰 검증 실패: {exc}")
-            raise HTTPException(status_code=401, detail="Invalid token") from exc
+        except JWTError as e:
+            raise HTTPException(status_code=401, detail="Invalid token") from e
+
+
+
 
     async def signup(
         self,
@@ -128,7 +132,7 @@ class AuthService:
         log_output_data("권한", initial_role)
         log_stage_end("회원가입", f"사용자 {normalized_email} 등록 완료")
 
-        return {"token": self._create_token(user)}
+        return {"user": user}
 
     async def login(
         self, session: AsyncSession, email: str, password: str
@@ -153,60 +157,55 @@ class AuthService:
         log_output_data("권한", user.role)
         log_stage_end("로그인", f"사용자 {normalized_email} 로그인 성공")
 
-        return {"token": self._create_token(user)}
+        return {"user": user}
 
-    async def get_current_user(self, session: AsyncSession, token: str) -> User:
-        log_info("   🔍 현재 사용자 조회 시작")
+    def new_csrf_token(self) -> str:
+        # 256-bit random token (urlsafe)
+        return secrets.token_urlsafe(32)
 
-        payload = self.verify_token(token)
-        user_id = payload.get("uid")
+    async def create_session(self, session: AsyncSession, user: User) -> UserSession:
+        now = datetime.now(timezone.utc)
+        sid = secrets.token_urlsafe(32)
+        sess = UserSession(
+            id=sid,
+            user_id=user.id,
+            created_at=now,
+            expires_at=now + timedelta(hours=self.session_expire_hours),
+            revoked_at=None,
+        )
+        session.add(sess)
+        await session.commit()
+        return sess
 
-        if not user_id:
-            log_warning("   ⚠️ 토큰에 사용자 ID 없음")
-            raise HTTPException(status_code=401, detail="Invalid token")
-
-        user = await session.get(User, user_id)
-
+    async def get_user_by_session_id(self, session: AsyncSession, session_id: str) -> User:
+        now = datetime.now(timezone.utc)
+        sess = await session.get(UserSession, session_id)
+        if not sess:
+            raise HTTPException(status_code=401, detail="Invalid session")
+        if sess.revoked_at is not None:
+            raise HTTPException(status_code=401, detail="Session revoked")
+        # Handle timezone-naive expires_at from legacy data
+        expires = sess.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires <= now:
+            raise HTTPException(status_code=401, detail="Session expired")
+        user = await session.get(User, sess.user_id)
         if not user:
-            log_warning(f"   ⚠️ 사용자 ID {user_id} 찾을 수 없음")
-            raise HTTPException(status_code=401, detail="Invalid token")
-
-        log_info(f"   ✅ 현재 사용자: {user.email} (권한: {user.role})")
+            raise HTTPException(status_code=401, detail="Invalid session")
         return user
 
-    async def logout(
-        self,
-        session: AsyncSession,
-        token: str | None = None,
-    ) -> dict[str, Any]:
-        """로그아웃 처리 및 로그 기록"""
+    async def delete_session(self, session: AsyncSession, session_id: str) -> None:
+        sess = await session.get(UserSession, session_id)
+        if not sess:
+            return
+        sess.revoked_at = datetime.now(timezone.utc)
+        await session.commit()
+
+    async def logout(self, session: AsyncSession) -> dict[str, Any]:
+        """로그아웃 처리 및 로그 기록 (세션은 엔드포인트에서 delete_session으로 처리)."""
         log_stage_start("로그아웃", "사용자 세션 종료")
-
-        user_email = "알 수 없음"
-        user_role = "알 수 없음"
-
-        if token:
-            try:
-                payload = self.verify_token(token)
-                user_email = payload.get("sub", "알 수 없음")
-                user_id = payload.get("uid")
-                user_role = payload.get("role", "알 수 없음")
-
-                if user_id:
-                    user = await session.get(User, user_id)
-                    if user:
-                        user_email = user.email
-                        user_role = user.role
-
-                log_output_data("사용자 이메일", user_email)
-                log_output_data("사용자 권한", user_role)
-            except Exception as e:
-                log_warning(f"   ⚠️ 토큰 검증 실패 (만료된 토큰으로 로그아웃): {e}")
-        else:
-            log_warning("   ⚠️ 토큰 없이 로그아웃 요청 (클라이언트 측 세션 삭제)")
-
-        log_stage_end("로그아웃", f"사용자 {user_email} 로그아웃 완료")
-
-        return {"message": "로그아웃 완료", "email": user_email}
+        log_stage_end("로그아웃", "로그아웃 완료")
+        return {"message": "로그아웃 완료"}
 
 
