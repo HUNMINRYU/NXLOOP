@@ -108,7 +108,13 @@ export function fetchProducts() {
 }
 
 export function fetchMe() {
-    return request<{ email: Email; role: string; name: string }>('/auth/me');
+    return request<{
+        email: Email;
+        role: string;
+        name: string;
+        tier?: string;
+        subscription_status?: string;
+    }>('/auth/me');
 }
 
 export function runPipeline(payload: {

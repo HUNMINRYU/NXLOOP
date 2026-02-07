@@ -3,19 +3,31 @@
 import Link from 'next/link';
 import { useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
+import { useAuthStore } from '@/store/useAuthStore';
+import { fetchMe } from '@/lib/api';
 
 export default function PaymentSuccessPage() {
   const hasRun = useRef(false);
+  const setAuth = useAuthStore((s) => s.setAuth);
 
   useEffect(() => {
     if (hasRun.current) return;
     hasRun.current = true;
 
-    try {
-      localStorage.setItem('user_tier', 'PRO');
-    } catch {
-      // 데모 UX용이므로 저장 실패 시에도 진행합니다.
-    }
+    // 백엔드에서 최신 구독 정보를 가져와 Zustand 스토어에 반영
+    fetchMe()
+      .then((me) => {
+        setAuth({
+          email: me.email,
+          role: me.role,
+          name: me.name,
+          tier: me.tier ?? 'PRO',
+          subscriptionStatus: me.subscription_status ?? 'active',
+        });
+      })
+      .catch(() => {
+        // 결제 성공 페이지이므로, API 호출 실패 시에도 UX를 차단하지 않습니다.
+      });
 
     const durationMs = 1800;
     const startedAt = Date.now();
@@ -47,7 +59,7 @@ export default function PaymentSuccessPage() {
     }, 260);
 
     return () => window.clearInterval(interval);
-  }, []);
+  }, [setAuth]);
 
   return (
     <main className="min-h-screen bg-[var(--color-background)]">
@@ -61,8 +73,8 @@ export default function PaymentSuccessPage() {
             결제 성공! Professional 등급으로 업그레이드되었습니다.
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-[var(--color-muted)] sm:text-base">
-            데모 환경에서는 로컬 저장소에 등급을 기록해두었습니다. 다음 화면에서도 업그레이드
-            상태를 유지할 수 있어요.
+            구독 정보가 서버에서 확인되어 계정에 반영되었습니다. 모든 PRO 기능을
+            자유롭게 이용하세요.
           </p>
 
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
@@ -89,4 +101,3 @@ export default function PaymentSuccessPage() {
     </main>
   );
 }
-
