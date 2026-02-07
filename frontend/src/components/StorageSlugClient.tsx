@@ -225,28 +225,32 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
             <>
                 <Navbar />
                 <main className="relative min-h-screen overflow-hidden flex flex-col items-center justify-center">
-                    {/* Layer 1: 베이스 그라디언트 */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950" />
+                    {/* Layer 1: Light Elegant Base */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-slate-100" />
 
-                    {/* Layer 2: 그리드 패턴 */}
+                    {/* Layer 2: Subtle Colored Wash */}
+                    <div className="absolute inset-0 bg-gradient-to-tr from-slate-500/[0.02] via-transparent to-slate-500/[0.02]" />
+
+                    {/* Layer 3: Refined Grid Pattern */}
                     <div
-                        className="absolute inset-0 opacity-[0.02]"
+                        className="absolute inset-0 opacity-[0.03]"
                         style={{
                             backgroundImage: `
-                                linear-gradient(to right, white 1px, transparent 1px),
-                                linear-gradient(to bottom, white 1px, transparent 1px)
+                                linear-gradient(to right, rgb(15 23 42 / 0.08) 1px, transparent 1px),
+                                linear-gradient(to bottom, rgb(15 23 42 / 0.08) 1px, transparent 1px)
                             `,
                             backgroundSize: '80px 80px',
                         }}
                     />
 
-                    {/* Layer 3: 기본 글로우 (slug 없음) */}
-                    <div className="absolute top-20 left-10 w-[500px] h-[500px] bg-slate-500/10 blur-[120px] rounded-full animate-pulse" />
+                    {/* Layer 4: Subtle Glow */}
+                    <div className="absolute top-20 -left-20 w-[600px] h-[600px] bg-slate-400/[0.04] blur-[140px] rounded-full" />
 
                     <div className="relative z-10 p-8 pt-24">
-                        <Card className="max-w-2xl w-full text-center">
-                            <h1 className="text-4xl font-bold mb-4">Not Found</h1>
-                            <Button asChild variant="secondary">
+                        <Card className="max-w-2xl w-full text-center border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
+                            <h1 className="text-4xl font-bold mb-4 text-slate-900">Not Found</h1>
+                            <p className="text-slate-600 mb-6">The page you're looking for doesn't exist.</p>
+                            <Button asChild variant="secondary" className="bg-slate-900 hover:bg-slate-800 text-white">
                                 <Link href="/">Back to Home</Link>
                             </Button>
                         </Card>
@@ -260,48 +264,61 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
         <>
             <Navbar />
             <main className="relative min-h-screen overflow-hidden">
-                {/* Layer 1: 베이스 그라디언트 */}
-                <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950" />
+                {/* Layer 1: Light Elegant Base */}
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-slate-100" />
 
-                {/* Layer 2: 그리드 패턴 */}
+                {/* Layer 2: Subtle Colored Wash (slug-specific) */}
+                {slug === 'video-vault' && (
+                    <div className="absolute inset-0 bg-gradient-to-tr from-teal-500/[0.02] via-transparent to-indigo-500/[0.02]" />
+                )}
+                {slug === 'asset-library' && (
+                    <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/[0.02] via-transparent to-amber-500/[0.02]" />
+                )}
+                {slug === 'prompt-log' && (
+                    <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/[0.02] via-transparent to-teal-500/[0.02]" />
+                )}
+
+                {/* Layer 3: Refined Grid Pattern */}
                 <div
-                    className="absolute inset-0 opacity-[0.02]"
+                    className="absolute inset-0 opacity-[0.03]"
                     style={{
                         backgroundImage: `
-                            linear-gradient(to right, white 1px, transparent 1px),
-                            linear-gradient(to bottom, white 1px, transparent 1px)
+                            linear-gradient(to right, rgb(15 23 42 / 0.08) 1px, transparent 1px),
+                            linear-gradient(to bottom, rgb(15 23 42 / 0.08) 1px, transparent 1px)
                         `,
                         backgroundSize: '80px 80px',
                     }}
                 />
 
-                {/* Layer 3: 글로우 오브들 (slug별 색상) */}
+                {/* Layer 4: Ethereal Glow Orbs (slug별 색상) */}
                 {slug === 'video-vault' && (
                     <>
-                        <div className="absolute top-20 left-10 w-[500px] h-[500px] bg-teal-500/10 blur-[120px] rounded-full animate-pulse" />
-                        <div
-                            className="absolute bottom-20 right-10 w-[500px] h-[500px] bg-indigo-500/10 blur-[120px] rounded-full animate-pulse"
-                            style={{ animationDelay: '1s' }}
-                        />
+                        <div className="absolute top-20 -left-20 w-[600px] h-[600px] bg-teal-400/[0.06] blur-[140px] rounded-full" />
+                        <div className="absolute bottom-20 -right-20 w-[600px] h-[600px] bg-indigo-400/[0.06] blur-[140px] rounded-full" />
                     </>
                 )}
                 {slug === 'asset-library' && (
                     <>
-                        <div className="absolute top-20 left-10 w-[500px] h-[500px] bg-indigo-500/10 blur-[120px] rounded-full animate-pulse" />
-                        <div
-                            className="absolute bottom-20 right-10 w-[500px] h-[500px] bg-amber-500/10 blur-[120px] rounded-full animate-pulse"
-                            style={{ animationDelay: '1s' }}
-                        />
+                        <div className="absolute top-20 -left-20 w-[600px] h-[600px] bg-indigo-400/[0.06] blur-[140px] rounded-full" />
+                        <div className="absolute bottom-20 -right-20 w-[600px] h-[600px] bg-amber-400/[0.06] blur-[140px] rounded-full" />
                     </>
                 )}
                 {slug === 'prompt-log' && (
                     <>
-                        <div className="absolute top-20 left-10 w-[500px] h-[500px] bg-amber-500/10 blur-[120px] rounded-full animate-pulse" />
-                        <div
-                            className="absolute bottom-20 right-10 w-[500px] h-[500px] bg-teal-500/10 blur-[120px] rounded-full animate-pulse"
-                            style={{ animationDelay: '1s' }}
-                        />
+                        <div className="absolute top-20 -left-20 w-[600px] h-[600px] bg-amber-400/[0.06] blur-[140px] rounded-full" />
+                        <div className="absolute bottom-20 -right-20 w-[600px] h-[600px] bg-teal-400/[0.06] blur-[140px] rounded-full" />
                     </>
+                )}
+
+                {/* Layer 5: Accent Shimmer (slug-specific) */}
+                {slug === 'video-vault' && (
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-gradient-to-r from-teal-500/[0.03] to-indigo-500/[0.03] blur-[100px] rounded-full" />
+                )}
+                {slug === 'asset-library' && (
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-gradient-to-r from-indigo-500/[0.03] to-amber-500/[0.03] blur-[100px] rounded-full" />
+                )}
+                {slug === 'prompt-log' && (
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-gradient-to-r from-amber-500/[0.03] to-teal-500/[0.03] blur-[100px] rounded-full" />
                 )}
 
                 {/* 콘텐츠 */}
@@ -310,26 +327,26 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                     {/* Header Section */}
                     <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
                         <div>
-                            <h2 className="font-display text-[var(--color-primary)] font-semibold uppercase tracking-widest mb-2 opacity-80 text-sm">
+                            <h2 className="font-display text-teal-600 font-semibold uppercase tracking-[0.2em] mb-3 text-sm">
                                 Storage / {slug.replace('-', ' ')}
                             </h2>
-                            <h1 className="font-display text-5xl md:text-6xl font-bold mb-4 tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/40">
+                            <h1 className="font-display text-5xl md:text-6xl font-bold mb-4 tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 via-slate-800 to-slate-600 leading-[1.1]">
                                 {item.title}
                             </h1>
-                            <p className="font-body text-xl text-[var(--color-muted)] font-medium leading-relaxed">
+                            <p className="font-body text-xl text-slate-600 font-medium leading-relaxed">
                                 {item.subtitle}
                             </p>
                         </div>
 
                         {/* Filter Section */}
-                        <div className="bg-white/[0.03] backdrop-blur-xl border border-white/5 p-2 rounded-2xl flex items-center gap-4">
-                            <span className="text-xs font-black uppercase tracking-widest ml-4 opacity-40">
+                        <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 p-2 rounded-2xl flex items-center gap-4 shadow-sm">
+                            <span className="text-xs font-black uppercase tracking-[0.15em] ml-4 text-slate-500">
                                 Filter by Product
                             </span>
                             <select
                                 value={selectedProduct}
                                 onChange={(e) => setSelectedProduct(e.target.value)}
-                                className="bg-[var(--color-background)] border-none text-sm font-bold p-3 rounded-xl outline-none focus:ring-2 focus:ring-[var(--color-primary)]/50 min-w-[200px] cursor-pointer"
+                                className="bg-white border border-slate-200 text-sm font-bold p-3 rounded-xl outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 min-w-[200px] cursor-pointer text-slate-900"
                             >
                                 <option value="all">All Products</option>
                                 {productList.map((p) => (
@@ -344,17 +361,17 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                     {/* 정렬/검색 컨트롤 */}
                     <div className="mt-6 flex flex-col md:flex-row gap-4">
                         {/* 정렬 드롭다운 */}
-                        <div className="bg-white/[0.03] backdrop-blur-xl border border-white/5 p-2 rounded-2xl flex items-center gap-4 flex-1">
-                            <span className="text-xs font-black uppercase tracking-widest ml-4 opacity-40">
+                        <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 p-2 rounded-2xl flex items-center gap-4 flex-1 shadow-sm">
+                            <span className="text-xs font-black uppercase tracking-[0.15em] ml-4 text-slate-500">
                                 정렬
                             </span>
                             <select
                                 value={sortBy}
                                 onChange={(e) => {
                                     setSortBy(e.target.value as SortOption);
-                                    setCurrentPage(1); // 정렬 변경 시 첫 페이지로
+                                    setCurrentPage(1);
                                 }}
-                                className="bg-[var(--color-background)] border-none text-sm font-bold p-3 rounded-xl outline-none focus:ring-2 focus:ring-[var(--color-primary)]/50 flex-1 cursor-pointer"
+                                className="bg-white border border-slate-200 text-sm font-bold p-3 rounded-xl outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 flex-1 cursor-pointer text-slate-900"
                             >
                                 <option value="newest">최신순</option>
                                 <option value="oldest">오래된순</option>
@@ -363,8 +380,8 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                         </div>
 
                         {/* 검색 입력 */}
-                        <div className="bg-white/[0.03] backdrop-blur-xl border border-white/5 p-2 rounded-2xl flex items-center gap-4 flex-1">
-                            <span className="text-xs font-black uppercase tracking-widest ml-4 opacity-40">
+                        <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 p-2 rounded-2xl flex items-center gap-4 flex-1 shadow-sm">
+                            <span className="text-xs font-black uppercase tracking-[0.15em] ml-4 text-slate-500">
                                 검색
                             </span>
                             <input
@@ -373,37 +390,37 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                                 value={searchQuery}
                                 onChange={(e) => {
                                     setSearchQuery(e.target.value);
-                                    setCurrentPage(1); // 검색 시 첫 페이지로
+                                    setCurrentPage(1);
                                 }}
-                                className="bg-[var(--color-background)] border-none text-sm font-bold p-3 rounded-xl outline-none focus:ring-2 focus:ring-[var(--color-primary)]/50 flex-1"
+                                className="bg-white border border-slate-200 text-sm font-bold p-3 rounded-xl outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 flex-1 text-slate-900 placeholder:text-slate-400"
                             />
                         </div>
                     </div>
 
                     {isLoading ? (
-                        <div className="flex flex-col items-center py-20 animate-pulse">
-                            <div className="w-12 h-12 rounded-full border-4 border-[var(--color-primary)] border-t-transparent animate-spin mb-4" />
-                            <p className="text-sm font-bold text-[var(--color-muted)]">데이터를 불러오는 중입니다...</p>
+                        <div className="flex flex-col items-center py-20">
+                            <div className="w-12 h-12 rounded-full border-4 border-teal-500 border-t-transparent animate-spin mb-4" />
+                            <p className="text-sm font-bold text-slate-600">데이터를 불러오는 중입니다...</p>
                         </div>
                     ) : error ? (
-                        <Card className="p-8 border-rose-500/20 bg-rose-500/5 text-center">
-                            <p className="text-sm font-black text-rose-500">{error}</p>
+                        <Card className="p-8 border-rose-200/60 bg-rose-50 text-center shadow-lg shadow-rose-200/50">
+                            <p className="text-sm font-bold text-rose-700">{error}</p>
                         </Card>
                     ) : (
                         <div className="space-y-12">
                             {slug === 'video-vault' && (
                                 <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
                                     {videoItems.length === 0 ? (
-                                        <div className="col-span-full py-32 text-center border-2 border-dashed border-white/5 rounded-3xl">
-                                            <p className="text-[var(--color-muted)] font-bold">
+                                        <div className="col-span-full py-32 text-center border-2 border-dashed border-slate-200/60 rounded-3xl bg-white/40">
+                                            <p className="text-slate-500 font-bold">
                                                 표시할 비디오가 없습니다.
                                             </p>
                                         </div>
                                     ) : (
                                         videoItems.map((item, idx) => (
                                             <div key={`${item.url}-${idx}`} className="group relative">
-                                                <Card className="p-0 overflow-hidden border-white/5 bg-white/[0.02] transition-all duration-500 hover:scale-[1.02] hover:bg-white/[0.05]">
-                                                    <div className="aspect-[9/16] bg-black flex items-center justify-center relative">
+                                                <Card className="p-0 overflow-hidden border-slate-200/60 bg-white/80 backdrop-blur-xl transition-all duration-500 hover:scale-[1.02] hover:shadow-xl hover:shadow-slate-300/50 shadow-lg shadow-slate-200/50">
+                                                    <div className="aspect-[9/16] bg-slate-900 flex items-center justify-center relative">
                                                         <video
                                                             src={item.url}
                                                             controls
@@ -414,14 +431,14 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                                                             }}
                                                         />
                                                     </div>
-                                                    <div className="p-4 flex items-center justify-between bg-black/40 backdrop-blur-md">
-                                                        <span className="text-[10px] font-black uppercase tracking-widest opacity-50">
+                                                    <div className="p-4 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
+                                                        <span className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">
                                                             {item.gcsPath?.split('/').pop() || 'Video Asset'}
                                                         </span>
                                                         <a
                                                             href={item.url}
                                                             download
-                                                            className="text-xs font-black text-[var(--color-primary)] hover:underline"
+                                                            className="text-xs font-black text-teal-600 hover:text-teal-700 hover:underline transition-colors"
                                                         >
                                                             DOWNLOAD
                                                         </a>
@@ -436,15 +453,15 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                             {slug === 'asset-library' && (
                                 <div className="grid gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                                     {thumbnailItems.length === 0 ? (
-                                        <div className="col-span-full py-32 text-center border-2 border-dashed border-white/5 rounded-3xl">
-                                            <p className="text-[var(--color-muted)] font-bold">
+                                        <div className="col-span-full py-32 text-center border-2 border-dashed border-slate-200/60 rounded-3xl bg-white/40">
+                                            <p className="text-slate-500 font-bold">
                                                 표시할 썸네일이 없습니다.
                                             </p>
                                         </div>
                                     ) : (
                                         thumbnailItems.map((item, idx) => (
                                             <div key={`${item.url}-${idx}`} className="group relative">
-                                                <Card className="p-0 overflow-hidden border-white/5 bg-white/[0.02] transition-all hover:scale-[1.05]">
+                                                <Card className="p-0 overflow-hidden border-slate-200/60 bg-white/80 backdrop-blur-xl transition-all hover:scale-[1.05] hover:shadow-xl hover:shadow-slate-300/50 shadow-lg shadow-slate-200/50">
                                                     <img
                                                         src={item.url}
                                                         alt={`thumb-${idx}`}
@@ -454,11 +471,11 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                                                                 handleRefreshMedia('thumb', idx, item.gcsPath);
                                                         }}
                                                     />
-                                                    <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-slate-900/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <a
                                                             href={item.url}
                                                             download
-                                                            className="text-[10px] font-black text-white hover:text-[var(--color-primary)] block text-center uppercase tracking-widest"
+                                                            className="text-[10px] font-black text-white hover:text-teal-300 block text-center uppercase tracking-[0.15em] transition-colors"
                                                         >
                                                             Download Asset
                                                         </a>
@@ -473,36 +490,36 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                             {slug === 'prompt-log' && (
                                 <div className="space-y-6">
                                     {/* Cache Control Card */}
-                                    <Card className="border-white/5 bg-gradient-to-br from-white/[0.04] to-transparent p-8">
+                                    <Card className="border-slate-200/60 bg-gradient-to-br from-white to-slate-50 p-8 shadow-lg shadow-slate-200/50">
                                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
                                             <div>
-                                                <h4 className="text-2xl font-black mb-2">Cache Performance</h4>
-                                                <p className="text-[var(--color-muted)] font-bold mb-6">
+                                                <h4 className="text-2xl font-bold mb-2 text-slate-900">Cache Performance</h4>
+                                                <p className="text-slate-600 font-medium mb-6 leading-relaxed">
                                                     Manage AI inference history and optimize database performance.
                                                 </p>
 
                                                 <div className="flex gap-8">
                                                     <div className="text-center">
-                                                        <p className="text-3xl font-black text-white">
+                                                        <p className="text-3xl font-bold text-slate-900">
                                                             {cacheStats?.total_entries ?? '-'}
                                                         </p>
-                                                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40">
+                                                        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">
                                                             Total
                                                         </p>
                                                     </div>
                                                     <div className="text-center">
-                                                        <p className="text-3xl font-black text-emerald-500">
+                                                        <p className="text-3xl font-bold text-emerald-600">
                                                             {cacheStats?.active_entries ?? '-'}
                                                         </p>
-                                                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40">
+                                                        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">
                                                             Active
                                                         </p>
                                                     </div>
                                                     <div className="text-center">
-                                                        <p className="text-3xl font-black text-rose-500">
+                                                        <p className="text-3xl font-bold text-rose-600">
                                                             {cacheStats?.expired_entries ?? '-'}
                                                         </p>
-                                                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40">
+                                                        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">
                                                             Expired
                                                         </p>
                                                     </div>
@@ -513,13 +530,13 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                                                 <Button
                                                     type="button"
                                                     variant="secondary"
-                                                    className="px-10 py-6 font-black tracking-widest"
+                                                    className="px-10 py-6 font-black tracking-[0.15em] bg-slate-900 hover:bg-slate-800 text-white"
                                                     onClick={handleCacheClear}
                                                 >
                                                     INITIALIZE CACHE
                                                 </Button>
                                                 {cacheMessage && (
-                                                    <p className="text-xs font-bold text-emerald-400">{cacheMessage}</p>
+                                                    <p className="text-xs font-bold text-emerald-600">{cacheMessage}</p>
                                                 )}
                                             </div>
                                         </div>
@@ -527,9 +544,11 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
 
                                     <div className="grid gap-6">
                                         {paginatedTasks.length === 0 ? (
-                                            <p className="text-center py-20 text-[var(--color-muted)] font-bold opacity-30">
-                                                표시할 프롬프트 이력이 없습니다.
-                                            </p>
+                                            <div className="text-center py-20 border-2 border-dashed border-slate-200/60 rounded-3xl bg-white/40">
+                                                <p className="text-slate-500 font-bold">
+                                                    표시할 프롬프트 이력이 없습니다.
+                                                </p>
+                                            </div>
                                         ) : (
                                             paginatedTasks.map((task, idx) => {
                                                 const promptLog =
@@ -541,37 +560,37 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                                                 return (
                                                     <Card
                                                         key={task.task_id}
-                                                        className="border-white/5 bg-white/[0.01] hover:bg-white/[0.03] transition-colors p-6"
+                                                        className="border-slate-200/60 bg-white/80 backdrop-blur-xl hover:shadow-lg hover:shadow-slate-300/50 transition-all p-6 shadow-md shadow-slate-200/50"
                                                     >
                                                         <div className="flex items-start justify-between mb-6">
                                                             <div className="space-y-1">
                                                                 <div className="flex items-center gap-3">
-                                                                    <span className="w-2 h-2 rounded-full bg-[var(--color-primary)] shadow-[0_0_10px_var(--color-primary)]" />
-                                                                    <h5 className="text-lg font-black tracking-tight">
+                                                                    <span className="w-2 h-2 rounded-full bg-teal-500 shadow-[0_0_10px_rgba(20,184,166,0.5)]" />
+                                                                    <h5 className="text-lg font-bold tracking-tight text-slate-900">
                                                                         {task.product}
                                                                     </h5>
                                                                 </div>
-                                                                <p className="text-xs font-bold text-[var(--color-muted)] opacity-60">
+                                                                <p className="text-xs font-bold text-slate-500">
                                                                     ID: {task.task_id}
                                                                 </p>
                                                             </div>
                                                             <span
-                                                                className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${task.status === 'success' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}
+                                                                className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.1em] ${task.status === 'success' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/50' : 'bg-rose-50 text-rose-700 ring-1 ring-rose-200/50'}`}
                                                             >
                                                                 {task.status}
                                                             </span>
                                                         </div>
 
                                                         {promptLog && (
-                                                            <details className="group border border-white/5 rounded-2xl overflow-hidden shadow-inner">
-                                                                <summary className="p-4 bg-white/[0.02] cursor-pointer font-black text-[10px] uppercase tracking-widest group-open:bg-white/[0.05] transition-colors flex justify-between items-center">
+                                                            <details className="group border border-slate-200/60 rounded-2xl overflow-hidden bg-white/50">
+                                                                <summary className="p-4 bg-slate-50/50 cursor-pointer font-black text-[10px] uppercase tracking-[0.15em] group-open:bg-slate-100/50 transition-colors flex justify-between items-center text-slate-700">
                                                                     <span>View Detailed Prompt Log</span>
                                                                     <span className="group-open:rotate-180 transition-transform">
                                                                         ↓
                                                                     </span>
                                                                 </summary>
-                                                                <div className="p-6 bg-black/40">
-                                                                    <pre className="text-xs text-white/70 font-mono leading-relaxed overflow-x-auto">
+                                                                <div className="p-6 bg-slate-900/95">
+                                                                    <pre className="text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto">
                                                                         {JSON.stringify(promptLog, null, 2)}
                                                                     </pre>
                                                                 </div>
@@ -594,16 +613,16 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                                 variant="secondary"
                                 disabled={currentPage === 1}
                                 onClick={() => setCurrentPage((p) => p - 1)}
-                                className="font-black px-6"
+                                className="font-black px-6 bg-white/80 border-slate-200/60 text-slate-900 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                                 ← 이전
                             </Button>
 
                             <div className="flex items-center gap-2">
-                                <span className="text-sm font-bold text-[var(--color-muted)]">
+                                <span className="text-sm font-bold text-slate-700">
                                     {currentPage} / {totalPages}
                                 </span>
-                                <span className="text-xs opacity-40">
+                                <span className="text-xs text-slate-500">
                                     ({processedTasks.length}개 중{' '}
                                     {Math.min(currentPage * ITEMS_PER_PAGE, processedTasks.length)}개 표시)
                                 </span>
@@ -613,18 +632,18 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                                 variant="secondary"
                                 disabled={currentPage >= totalPages}
                                 onClick={() => setCurrentPage((p) => p + 1)}
-                                className="font-black px-6"
+                                className="font-black px-6 bg-white/80 border-slate-200/60 text-slate-900 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                                 다음 →
                             </Button>
                         </div>
                     )}
 
-                    <div className="mt-20 pt-8 border-t border-white/5 flex justify-center">
+                    <div className="mt-20 pt-8 border-t border-slate-200/60 flex justify-center">
                         <Button
                             asChild
                             variant="ghost"
-                            className="font-black gap-2 hover:bg-white/5 transition-all px-10 py-6"
+                            className="font-black gap-2 hover:bg-slate-100/50 transition-all px-10 py-6 text-slate-700 hover:text-slate-900"
                         >
                             <Link href="/storage">← RETURN TO STORAGE HUB</Link>
                         </Button>
