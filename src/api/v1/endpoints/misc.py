@@ -13,10 +13,25 @@ from utils.rate_limit import check_rate_limit, get_remaining_requests
 
 router = APIRouter()
 
+# 평가/발표용: Nexloop에서 사용하는 GCP 서비스 요약 (문서·헬스 응답용)
+GCP_SERVICES_USED = [
+    "Cloud Run",
+    "Cloud SQL",
+    "GCS",
+    "Secret Manager",
+    "Vertex AI",
+    "Cloud Scheduler",
+]
+
 
 @router.get("/health")
 async def health_check():
-    return {"status": "ok", "message": "Nexloop API is running"}
+    """헬스 체크. 사용 중인 GCP 서비스 요약 포함 (평가/발표용)."""
+    return {
+        "status": "ok",
+        "message": "Nexloop API is running",
+        "gcp_services": GCP_SERVICES_USED,
+    }
 
 
 @router.post("/leads")
