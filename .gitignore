@@ -90,3 +90,4 @@ nu_
 # 임시 백업 파일 (로컬 전용)
 *.backup
 
+cloud-sql-proxy/
