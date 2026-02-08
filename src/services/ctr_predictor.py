@@ -1,7 +1,19 @@
 """
 CTR 예측 서비스
 썸네일 + 제목 조합 분석 및 클릭률 예측
+
+Two-Tower 아키텍처:
+- Query Tower: 새 콘텐츠 아이디어를 임베딩 벡터로 변환
+- Candidate Tower: 과거 성공 사례를 임베딩 벡터로 변환
+- 두 벡터의 코사인 유사도로 "성공 확률"을 산출
+- 규칙 기반 점수와 임베딩 유사도를 가중 결합 (하이브리드)
 """
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
 
 from core.prompts import (
     prompt_registry,
@@ -18,17 +30,42 @@ from utils.logger import (
 
 logger = get_logger(__name__)
 
+# 대표 성공 사례 제목 (브랜드 마케팅 영상 기준)
+_DEFAULT_SUCCESS_CASES: list[str] = [
+    "이 제품 하나로 피부 고민 해결! 리얼 후기 공개",
+    "100만 뷰 달성! 지금 가장 핫한 아이템 TOP 5",
+    "전문가가 추천하는 가성비 끝판왕 비교 리뷰",
+    "구매 전 반드시 봐야 할 꿀팁 3가지",
+    "실제 사용 30일 후기 - 장점과 단점 솔직 리뷰",
+    "SNS에서 난리 난 그 제품, 진짜 효과 있을까?",
+    "충격적인 가격 대비 성능! 언박싱 & 첫인상 리뷰",
+    "브랜드가 절대 알려주지 않는 숨은 기능 5가지",
+]
+
+
+def _cosine_similarity(v1: np.ndarray, v2: np.ndarray) -> float:
+    """두 벡터의 코사인 유사도 계산"""
+    if np.all(v1 == 0) or np.all(v2 == 0):
+        return 0.0
+    norm1 = float(np.linalg.norm(v1))
+    norm2 = float(np.linalg.norm(v2))
+    if norm1 == 0.0 or norm2 == 0.0:
+        return 0.0
+    return float(np.dot(v1, v2) / (norm1 * norm2))
+
 
 class CTRPredictor:
-    """AI 기반 CTR 예측 서비스"""
+    """AI 기반 CTR 예측 서비스 (Two-Tower 하이브리드)"""
 
     def __init__(self, gemini_client=None) -> None:
         """
         Args:
-            gemini_client: AI 기반 심층 분석 시 사용 (선택)
+            gemini_client: Gemini 클라이언트 (임베딩 + 텍스트 생성)
         """
         self._gemini = gemini_client
         self._evaluator = ModelEvaluator()
+        # Two-Tower: 성공 사례 임베딩 캐시
+        self._success_embeddings: list[np.ndarray] | None = None
 
     def predict_ctr(
         self,
@@ -38,7 +75,12 @@ class CTRPredictor:
         category: str = "general",
     ) -> dict:
         """
-        제목과 썸네일 조합의 예상 CTR 계산
+        제목과 썸네일 조합의 예상 CTR 계산 (Two-Tower 하이브리드)
+
+        Two-Tower 아키텍처:
+          - Rule-based Tower: 제목/썸네일/차별화 등 휴리스틱 점수
+          - Embedding Tower: Gemini 임베딩 기반 성공 사례 유사도
+          - 두 타워의 결과를 가중 결합하여 최종 CTR 산출
 
         Args:
             title: 영상 제목
@@ -53,6 +95,7 @@ class CTRPredictor:
 
         scores = {}
 
+        # ── Rule-based Tower (휴리스틱) ───────────────────
         # 1. 제목 길이 점수
         scores["title_length"] = self._score_title_length(title)
 
@@ -70,14 +113,21 @@ class CTRPredictor:
             title, competitor_titles or []
         )
 
-        # 가중 평균 계산
-        total_score = (
+        rule_score = (
             scores["title_length"] * 0.15
             + scores["emoji_usage"] * 0.10
             + scores["hook_strength"] * 0.25
             + scores["thumbnail"] * 0.30
             + scores["differentiation"] * 0.20
         )
+
+        # ── Embedding Tower (Two-Tower 유사도) ────────────
+        embedding_score = self._compute_embedding_score(title)
+        scores["embedding_similarity"] = round(embedding_score, 1)
+
+        # ── 하이브리드 결합 ───────────────────────────────
+        # Rule Tower 60% + Embedding Tower 40%
+        total_score = rule_score * 0.6 + embedding_score * 0.4
 
         # CTR 범위로 변환 (2% ~ 15%)
         predicted_ctr = 2 + (total_score / 100) * 13
@@ -86,6 +136,8 @@ class CTRPredictor:
             "predicted_ctr": round(predicted_ctr, 2),
             "ctr_range": self._get_ctr_range(predicted_ctr),
             "total_score": round(total_score, 1),
+            "rule_tower_score": round(rule_score, 1),
+            "embedding_tower_score": round(embedding_score, 1),
             "breakdown": scores,
             "recommendations": self._generate_recommendations(scores),
             "grade": self._get_grade(total_score),
@@ -93,11 +145,62 @@ class CTRPredictor:
 
         log_success(f"CTR 예측 완료: {result['predicted_ctr']}% ({result['grade']})")
         self._evaluator.log_prediction(
-            model_name="ctr_hybrid",
+            model_name="ctr_two_tower_hybrid",
             input_data={"title": title, "thumbnail_description": thumbnail_description},
             output=result,
         )
         return result
+
+    # ── Two-Tower Embedding 메서드 ────────────────────────
+
+    def _compute_embedding_score(
+        self,
+        title: str,
+        success_cases: list[str] | None = None,
+    ) -> float:
+        """
+        Query Tower(새 제목) vs Candidate Tower(성공 사례)의 코사인 유사도 계산.
+
+        Gemini 클라이언트가 없으면 규칙 기반 점수(70.0)를 반환하여 graceful degradation.
+        """
+        if not self._gemini:
+            return 70.0
+
+        cases = success_cases or _DEFAULT_SUCCESS_CASES
+        try:
+            # Query Tower: 새 제목 임베딩
+            query_vec = np.array(self._gemini.get_embedding_sync(title))
+            if query_vec.size == 0 or np.all(query_vec == 0):
+                return 70.0
+
+            # Candidate Tower: 성공 사례 임베딩 (캐싱)
+            if self._success_embeddings is None:
+                self._success_embeddings = []
+                for case in cases:
+                    vec = np.array(self._gemini.get_embedding_sync(case))
+                    self._success_embeddings.append(vec)
+
+            # 코사인 유사도 계산 후 최댓값 사용
+            similarities = [
+                _cosine_similarity(query_vec, sv)
+                for sv in self._success_embeddings
+                if sv.size > 0 and not np.all(sv == 0)
+            ]
+            if not similarities:
+                return 70.0
+
+            max_sim = max(similarities)
+            avg_sim = sum(similarities) / len(similarities)
+
+            # 유사도를 0-100 점수로 변환 (시그모이드 스케일링)
+            # cosine_sim 범위: 대략 0.3~0.95 -> score 40~95
+            combined = 0.6 * max_sim + 0.4 * avg_sim
+            score = 100.0 / (1.0 + math.exp(-10 * (combined - 0.5)))
+            return max(0.0, min(100.0, score))
+
+        except Exception as e:
+            logger.warning("Two-Tower 임베딩 점수 계산 실패, 기본값 사용: %s", e)
+            return 70.0
 
     def _score_title_length(self, title: str) -> float:
         """제목 길이 점수 (0-100)"""
@@ -275,7 +378,7 @@ class CTRPredictor:
     ) -> dict:
         """
         파이프라인 결과(top insights)를 CTR 예측에 반영.
-        adjusted_ctr = base_ctr * (1 + Σ(weight_i × signal_i))
+        adjusted_ctr = base_ctr * (1 + sum(weight_i * signal_i))
         """
         basic = self.predict_ctr(title, thumbnail_description, category=category)
 
