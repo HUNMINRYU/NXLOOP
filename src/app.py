@@ -13,7 +13,7 @@ from api.middleware.csrf import csrf_protect
 from config.cors import resolve_cors_origins
 from config.settings import get_settings
 from infrastructure.database.connection import init_db
-from utils.logger import get_logger
+from utils.logger import get_logger, log_feature_end, log_feature_start
 
 logger = get_logger(__name__)
 
@@ -22,13 +22,17 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    log_feature_start("app_startup", "lifespan")
     settings = get_settings()
     settings.setup_environment()
     await init_db()
     logger.info("Application startup completed.")
+    log_feature_end("app_startup")
     yield
     # Shutdown
+    log_feature_start("app_shutdown", "lifespan")
     logger.info("Application shutdown.")
+    log_feature_end("app_shutdown")
 
 
 app = FastAPI(title="Nexloop Automation API", lifespan=lifespan)

@@ -1,5 +1,6 @@
 # src/services/pipeline_runner.py
 import asyncio
+import time
 from datetime import datetime
 from typing import Any
 
@@ -9,7 +10,7 @@ from config.settings import get_settings
 from core.models import PipelineConfig
 from core.state import PIPELINE_RESULTS, PIPELINE_STATUS
 from schemas.requests import PipelineRequest
-from utils.logger import get_logger
+from utils.logger import get_logger, log_feature_end, log_feature_fail, log_feature_start
 
 logger = get_logger(__name__)
 
@@ -96,6 +97,8 @@ def sanitize_result(result_obj: Any) -> Any:
 
 async def execute_pipeline_task(request: PipelineRequest, task_id: str) -> None:
     """실제 파이프라인 실행 비동기 함수"""
+    t0 = time.monotonic()
+    log_feature_start("pipeline_run", f"product={request.product_name} task_id={task_id}")
     logger.info(f"Automation Pipeline Start: {request.product_name}")
     _update_status_impl(task_id, {"status": "running", "message": "파이프라인 실행 중"})
     _append_process_log_impl(task_id, "파이프라인 실행 시작")
@@ -166,6 +169,11 @@ async def execute_pipeline_task(request: PipelineRequest, task_id: str) -> None:
         _store_result_impl(task_id, sanitized)
 
         if result.success:
+            log_feature_end(
+                "pipeline_run",
+                duration_sec=time.monotonic() - t0,
+                extra_detail=request.product_name,
+            )
             logger.info(f"Automation Pipeline Success: {request.product_name}")
             _update_status_impl(
                 task_id, {"status": "success", "message": "파이프라인 완료"}
@@ -208,6 +216,7 @@ async def execute_pipeline_task(request: PipelineRequest, task_id: str) -> None:
                 except Exception as ne:
                     logger.error(f"Notion Export Failed: {ne!s}")
         else:
+            log_feature_fail("pipeline_run", result.error_message or "unknown")
             logger.error(
                 f"Automation Pipeline Failed: {request.product_name} - {result.error_message}"
             )
@@ -223,6 +232,7 @@ async def execute_pipeline_task(request: PipelineRequest, task_id: str) -> None:
             )
 
     except Exception as e:
+        log_feature_fail("pipeline_run", str(e))
         logger.exception(f"Automation Pipeline Exception: {e!s}")
         settings = get_settings()
         debug_message = f"Pipeline exception: {e!s}"

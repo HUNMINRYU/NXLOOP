@@ -12,7 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from infrastructure.database.connection import get_db_session
 from schemas.requests import PipelineRequest
 from services.pipeline_runner import execute_pipeline_task, init_pipeline_status
-from utils.logger import get_logger
+from utils.logger import get_logger, log_feature_end, log_feature_fail, log_feature_start
 
 logger = get_logger(__name__)
 
@@ -86,11 +86,13 @@ async def scheduler_webhook(
         - product_name: 제품명 (필수)
         - 기타 PipelineRequest 파라미터들
     """
+    log_feature_start("webhook_pipeline", "scheduler trigger")
     payload = await request.json()
     schedule_id = payload.get("schedule_id")
     product_name = payload.get("product_name")
 
     if not product_name:
+        log_feature_fail("webhook_pipeline", "product_name is required")
         raise HTTPException(status_code=400, detail="product_name is required")
 
     # PipelineRequest 재구성
@@ -125,6 +127,7 @@ async def scheduler_webhook(
             logger.warning(f"next_execution_at 갱신 실패 (schedule_id={schedule_id}): {e}")
 
     logger.info(f"Webhook 파이프라인 실행: task_id={task_id}, product={product_name}")
+    log_feature_end("webhook_pipeline", extra_detail=f"task_id={task_id}")
 
     return {
         "status": "triggered",

@@ -6,7 +6,7 @@ from api.deps import CurrentUser
 from config.dependencies import get_services
 from infrastructure.database.connection import get_db_session
 from schemas.requests import AuthLoginRequest, AuthSignupRequest
-from utils.logger import log_info, log_warning
+from utils.logger import log_feature_end, log_feature_start, log_info, log_warning
 
 router = APIRouter()
 
@@ -60,6 +60,7 @@ def _clear_auth_cookies(response: Response, request: Request) -> None:
 
 @router.post("/signup")
 async def signup(request: AuthSignupRequest, http_response: Response, http_request: Request, session=Depends(get_db_session)):
+    log_feature_start("auth_signup", request.email)
     services = get_services()
     if request.name:
         name = request.name
@@ -79,6 +80,7 @@ async def signup(request: AuthSignupRequest, http_response: Response, http_reque
     csrf_token = services.auth_service.new_csrf_token()
     _set_auth_cookies(http_response, http_request, session_id=sess.id, csrf_token=csrf_token)
     log_info(f"   🔐 [회원가입] 세션 생성: {user.email}, 세션ID: {sess.id[:8]}...")
+    log_feature_end("auth_signup")
     return {
         "email": user.email,
         "role": user.role,
@@ -90,6 +92,7 @@ async def signup(request: AuthSignupRequest, http_response: Response, http_reque
 
 @router.post("/login")
 async def login(request: AuthLoginRequest, http_response: Response, http_request: Request, session=Depends(get_db_session)):
+    log_feature_start("auth_login", request.email)
     services = get_services()
     result = await services.auth_service.login(
         session=session,
@@ -101,6 +104,7 @@ async def login(request: AuthLoginRequest, http_response: Response, http_request
     csrf_token = services.auth_service.new_csrf_token()
     _set_auth_cookies(http_response, http_request, session_id=sess.id, csrf_token=csrf_token)
     log_info(f"   🔐 [로그인] 세션 생성: {user.email}, 세션ID: {sess.id[:8]}...")
+    log_feature_end("auth_login")
     return {
         "email": user.email,
         "role": user.role,
@@ -117,6 +121,7 @@ async def logout(
     session=Depends(get_db_session),
 ):
     """세션 쿠키 기반 로그아웃."""
+    log_feature_start("auth_logout", "")
     services = get_services()
 
     session_id = http_request.cookies.get(SESSION_COOKIE)
@@ -124,9 +129,11 @@ async def logout(
         await services.auth_service.delete_session(session=session, session_id=session_id)
         _clear_auth_cookies(http_response, http_request)
         log_info(f"   🔓 [로그아웃] 세션 삭제: 세션ID: {session_id[:8]}...")
+        log_feature_end("auth_logout")
         return {"message": "로그아웃 완료"}
 
     # 세션 쿠키 없으면 이미 로그아웃된 상태
+    log_feature_end("auth_logout")
     return {"message": "이미 로그아웃된 상태입니다"}
 
 

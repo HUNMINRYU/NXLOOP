@@ -1,4 +1,4 @@
-﻿"""
+"""
 Logging utilities for Nexloop.
 """
 
@@ -141,6 +141,37 @@ def log_step(step_name: str, status: str = "start", details: str = "") -> None:
     if details:
         msg += f" ({details})"
     get_logger().info(msg)
+
+
+# ============================================================
+# [FEATURE] 기능 단위 로깅 — 무슨 기능이 실행 중인지 항상 파악
+# ============================================================
+
+
+def log_feature_start(feature: str, detail: str = "") -> None:
+    """기능 실행 시작. 로그 검색 시 [FEATURE] 로 필터링 가능."""
+    msg = f"[FEATURE] ▶ {feature} 시작"
+    if detail:
+        msg += f" | {detail}"
+    get_logger().info(msg, extra={"feature": feature, "event": "start"})
+
+
+def log_feature_end(feature: str, duration_sec: float = 0, extra_detail: str = "") -> None:
+    """기능 실행 완료."""
+    msg = f"[FEATURE] ■ {feature} 완료"
+    if duration_sec > 0:
+        msg += f" | {duration_sec:.2f}s"
+    if extra_detail:
+        msg += f" | {extra_detail}"
+    get_logger().info(msg, extra={"feature": feature, "event": "end", "duration_sec": duration_sec})
+
+
+def log_feature_fail(feature: str, error: str = "") -> None:
+    """기능 실행 실패."""
+    msg = f"[FEATURE] ✖ {feature} 실패"
+    if error:
+        msg += f" | {error[:200]}"
+    get_logger().error(msg, extra={"feature": feature, "event": "fail"})
 
 
 def log_info(message: str) -> None:

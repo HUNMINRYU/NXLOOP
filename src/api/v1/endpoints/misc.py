@@ -9,6 +9,7 @@ from config.dependencies import get_services
 from config.settings import get_settings
 from schemas.requests import ChatRequest, LeadRequest, RefreshUrlRequest
 from utils.file_store import ensure_output_dir
+from utils.logger import log_feature_end, log_feature_start
 from utils.rate_limit import check_rate_limit, get_remaining_requests
 
 router = APIRouter()
@@ -27,6 +28,8 @@ GCP_SERVICES_USED = [
 @router.get("/health")
 async def health_check():
     """헬스 체크. 사용 중인 GCP 서비스 요약 포함 (평가/발표용)."""
+    log_feature_start("health_check", "")
+    log_feature_end("health_check")
     return {
         "status": "ok",
         "message": "Nexloop API is running",
