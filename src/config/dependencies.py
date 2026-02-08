@@ -146,6 +146,8 @@ class ServiceContainer:
         return GeminiClient(
             project_id=self._settings.gcp.project_id,
             location=self._settings.gcp.location,
+            text_model=self._settings.models.gemini_text_model,
+            image_model=self._settings.models.gemini_image_model,
         )
 
     @cached_property

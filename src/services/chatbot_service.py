@@ -80,12 +80,11 @@ class ChatbotService:
         log_info(f"RAG used: results={len(rag_results)} sources={len(sources)} store={store_tag}")
 
         try:
-            # Use async generation with Pro model
+            # .env GEMINI_TEXT_MODEL 사용 (클라이언트 기본값)
             raw_response = await self._gemini_client.generate_content_async(
                 prompt=prompt,
                 temperature=0.4,
                 use_grounding=use_grounding,
-                model="gemini-1.5-pro",
             )
             
             log_llm_response("챗봇 응답", f"응답 {len(raw_response or '')}자")
@@ -261,12 +260,11 @@ class ChatbotService:
         )
 
         try:
-            # 빠른 응답을 위해 Flash 모델 사용
+            # .env GEMINI_TEXT_MODEL 사용 (클라이언트 기본값)
             query = await self._gemini_client.generate_text_async(
                 prompt=prompt,
                 temperature=0.1,  # 창의성 최소화
                 max_retries=2,
-                model="gemini-1.5-flash", 
             )
             query = query.strip()
             # NO_SEARCH 처리
@@ -333,13 +331,11 @@ class ChatbotService:
 
         try:
             full_response = []
-            
-            # LLM 스트리밍 응답 전송 (Pro 모델 사용)
+            # .env GEMINI_TEXT_MODEL 사용 (클라이언트 기본값)
             async for chunk in self._gemini_client.generate_content_stream(
                 prompt=prompt,
                 temperature=0.4,
                 use_grounding=use_grounding,
-                model="gemini-1.5-pro", 
             ):
                 if chunk:
                     full_response.append(chunk)
