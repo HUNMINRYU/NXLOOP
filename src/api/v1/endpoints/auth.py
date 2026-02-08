@@ -87,6 +87,7 @@ async def signup(request: AuthSignupRequest, http_response: Response, http_reque
         "name": user.name,
         "tier": getattr(user, "tier", "FREE"),
         "subscription_status": getattr(user, "subscription_status", "none"),
+        "csrf_token": csrf_token,
     }
 
 
@@ -111,6 +112,7 @@ async def login(request: AuthLoginRequest, http_response: Response, http_request
         "name": user.name,
         "tier": getattr(user, "tier", "FREE"),
         "subscription_status": getattr(user, "subscription_status", "none"),
+        "csrf_token": csrf_token,
     }
 
 
@@ -138,13 +140,16 @@ async def logout(
 
 
 @router.get("/me")
-async def me(user: CurrentUser):
+async def me(user: CurrentUser, http_request: Request):
+    """현재 사용자 정보. cross-origin 환경에서 JS가 쿠키를 읽지 못하므로 csrf_token을 본문으로 내려준다."""
+    csrf_token = http_request.cookies.get(CSRF_COOKIE) or ""
     return {
         "email": user.email,
         "role": user.role,
         "name": user.name,
         "tier": getattr(user, "tier", "FREE"),
         "subscription_status": getattr(user, "subscription_status", "none"),
+        "csrf_token": csrf_token,
     }
 
 

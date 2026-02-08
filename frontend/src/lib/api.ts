@@ -51,10 +51,40 @@ function getCookie(name: string): string | null {
     return null;
 }
 
+const CSRF_STORAGE_KEY = 'nexloop_csrf_token';
+
+function getStoredCsrfToken(): string | null {
+    if (typeof sessionStorage === 'undefined') return null;
+    try {
+        return sessionStorage.getItem(CSRF_STORAGE_KEY);
+    } catch {
+        return null;
+    }
+}
+
+function setStoredCsrfToken(token: string): void {
+    if (typeof sessionStorage === 'undefined') return;
+    try {
+        sessionStorage.setItem(CSRF_STORAGE_KEY, token);
+    } catch {
+        // ignore
+    }
+}
+
+function clearStoredCsrfToken(): void {
+    if (typeof sessionStorage === 'undefined') return;
+    try {
+        sessionStorage.removeItem(CSRF_STORAGE_KEY);
+    } catch {
+        // ignore
+    }
+}
+
+/** cross-origin에서는 백엔드 쿠키를 JS로 읽을 수 없으므로, 응답 본문으로 받은 토큰을 sessionStorage에서 사용 */
 function getCsrfHeader(method?: string): Record<string, string> {
     const m = (method || 'GET').toUpperCase();
     if (m === 'GET' || m === 'HEAD' || m === 'OPTIONS') return {};
-    const token = getCookie('nexloop_csrf');
+    const token = getCookie('nexloop_csrf') ?? getStoredCsrfToken();
     return token ? { 'X-CSRF-Token': token } : {};
 }
 
@@ -79,6 +109,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         // Only redirect to login for authenticated endpoints (not /chat for guests)
         if (response.status === 401 && typeof window !== 'undefined' && path !== '/chat') {
             sessionStorage.removeItem('auth-storage');
+            clearStoredCsrfToken();
             try {
                 const { clearStoredChat } = await import('@/lib/chatStorage');
                 clearStoredChat();
@@ -104,7 +135,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
     const contentType = response.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
-        return (await response.json()) as T;
+        const data = (await response.json()) as T & { csrf_token?: string };
+        if (data && typeof data === 'object' && typeof (data as { csrf_token?: string }).csrf_token === 'string') {
+            setStoredCsrfToken((data as { csrf_token: string }).csrf_token);
+        }
+        if (path.includes('/auth/logout')) {
+            clearStoredCsrfToken();
+        }
+        return data as T;
     }
     return (await response.text()) as unknown as T;
 }
