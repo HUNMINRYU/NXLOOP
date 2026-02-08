@@ -28,6 +28,7 @@ def test_predict_ctr_breakdown_fields():
         "hook_strength",
         "thumbnail",
         "differentiation",
+        "embedding_similarity",
     }
 
 

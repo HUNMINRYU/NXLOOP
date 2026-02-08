@@ -235,6 +235,20 @@ class GeneratedContent(BaseModel):
     video_url: str | None = Field(default=None, description="비디오 URL")
 
 
+class PipelineMetrics(BaseModel):
+    """파이프라인 성능 메트릭"""
+
+    stage_timings: dict[str, float] = Field(
+        default_factory=dict, description="단계별 소요 시간(초)"
+    )
+    stage_counts: dict[str, dict[str, int]] = Field(
+        default_factory=dict, description="단계별 처리 건수 (input/output/filtered)"
+    )
+    total_filtered: int = Field(default=0, description="필터링된 총 건수")
+    filtering_rate: float = Field(default=0.0, description="필터링률 (0.0~1.0)")
+    throughput_per_sec: float = Field(default=0.0, description="초당 처리량")
+
+
 class PipelineResult(BaseModel):
     """파이프라인 실행 결과"""
 
@@ -266,3 +280,6 @@ class PipelineResult(BaseModel):
     )
     executed_at: datetime = Field(default_factory=datetime.now, description="실행 시간")
     duration_seconds: float = Field(default=0.0, ge=0, description="실행 시간(초)")
+    pipeline_metrics: PipelineMetrics | None = Field(
+        default=None, description="파이프라인 성능 메트릭"
+    )

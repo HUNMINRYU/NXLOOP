@@ -31,6 +31,9 @@ class DataQualityReport(BaseModel):
     valid_count: int
     rejected_count: int
     quality_score: float
+    avg_length: float = Field(default=0.0, description="유효 댓글 평균 길이")
+    spam_rate: float = Field(default=0.0, description="스팸 비율 (0.0~1.0)")
+    duplicate_rate: float = Field(default=0.0, description="중복 비율 (0.0~1.0)")
 
 
 def validate_comments(
@@ -45,10 +48,26 @@ def validate_comments(
             rejected += 1
 
     total = len(raw_comments)
+
+    # 확장 품질 메트릭 계산
+    avg_length = 0.0
+    if valid:
+        avg_length = sum(len(c.text) for c in valid) / len(valid)
+
+    spam_rate = rejected / max(total, 1)
+
+    # 중복 비율 계산
+    texts = [c.text for c in valid]
+    unique_count = len(set(texts))
+    duplicate_rate = 1 - (unique_count / max(len(texts), 1)) if texts else 0.0
+
     report = DataQualityReport(
         total_count=total,
         valid_count=len(valid),
         rejected_count=rejected,
         quality_score=len(valid) / max(total, 1),
+        avg_length=round(avg_length, 1),
+        spam_rate=round(spam_rate, 4),
+        duplicate_rate=round(duplicate_rate, 4),
     )
     return valid, report
