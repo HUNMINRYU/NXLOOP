@@ -1,5 +1,6 @@
+import asyncio
 import json
-from datetime import datetime, timedelta, time
+from datetime import datetime, time, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -44,17 +45,28 @@ async def health_check():
 
 @router.post("/leads")
 async def create_lead(request: LeadRequest):
+    log_feature_start("leads_capture", "")
     if "@" not in request.email:
+        log_feature_fail("leads_capture", "invalid email")
         raise HTTPException(status_code=400, detail="Invalid email")
-    out_dir = ensure_output_dir()
-    lead_path = out_dir / "leads.jsonl"
-    payload = {
-        "email": request.email,
-        "created_at": datetime.now().isoformat(),
-    }
-    with open(lead_path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    return {"status": "ok"}
+    try:
+        out_dir = ensure_output_dir()
+        lead_path = out_dir / "leads.jsonl"
+        payload = {
+            "email": request.email,
+            "created_at": datetime.now().isoformat(),
+        }
+
+        def _append_lead_sync(path: str, data: dict[str, Any]) -> None:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(data, ensure_ascii=False) + "\n")
+
+        await asyncio.to_thread(_append_lead_sync, str(lead_path), payload)
+        log_feature_end("leads_capture")
+        return {"status": "ok"}
+    except Exception as e:
+        log_feature_fail("leads_capture", str(e)[:200])
+        raise
 
 
 GUEST_CHAT_LIMIT = 3
@@ -121,13 +133,13 @@ async def chat_remaining(
     if user is not None:
         tier = getattr(user, "tier", "FREE")
         if tier in ("PRO", "BUSINESS"):
-            log_feature_end("chat_remaining")
+            log_feature_end("chat_remaining", extra_detail="remaining=null(unlimited)")
             return {"remaining": None}
         # FREE tier: DB 기준 오늘 사용량, 24시간(자정 KST) 기준 다음 리필 시각
         limit = _free_chat_limit()
         used = await _get_free_user_chat_usage_today(session, user.id)
         remaining = max(0, limit - used)
-        log_feature_end("chat_remaining", extra_detail=f"free_remaining={remaining}")
+        log_feature_end("chat_remaining", extra_detail=f"free_remaining={remaining} (used={used})")
         return {
             "remaining": remaining,
             "resets_at": _next_midnight_kst_iso(),
@@ -267,6 +279,7 @@ async def chat_stream(
 
 @router.post("/refresh-url")
 async def refresh_signed_url(request: RefreshUrlRequest):
+    log_feature_start("refresh_signed_url", "")
     services = get_services()
     storage = services.storage_service
 
@@ -278,7 +291,9 @@ async def refresh_signed_url(request: RefreshUrlRequest):
             path = parts[1]
     url = storage.get_signed_url(path)
     if not url:
+        log_feature_fail("refresh_signed_url", "failed to generate URL")
         raise HTTPException(status_code=404, detail="Failed to generate signed URL")
+    log_feature_end("refresh_signed_url")
     return {"url": url}
 
 
@@ -289,18 +304,24 @@ async def search_discovery(
     background_tasks: BackgroundTasks,
     max_results: int = 5,
 ):
-    services = get_services()
-    settings = get_settings()
-    data_store_id = settings.rag_data_stores.get(getattr(user, "role", ""))
-    results = await services.discovery_engine_client.search(
-        q,
-        max_results=max_results,
-        data_store_id=data_store_id,
-    )
-    background_tasks.add_task(
-        services.rag_ingestion_service.ingest_search_log,
-        q,
-        results,
-        user,
-    )
-    return {"results": results}
+    log_feature_start("search_discovery", "")
+    try:
+        services = get_services()
+        settings = get_settings()
+        data_store_id = settings.rag_data_stores.get(getattr(user, "role", ""))
+        results = await services.discovery_engine_client.search(
+            q,
+            max_results=max_results,
+            data_store_id=data_store_id,
+        )
+        background_tasks.add_task(
+            services.rag_ingestion_service.ingest_search_log,
+            q,
+            results,
+            user,
+        )
+        log_feature_end("search_discovery", extra_detail=f"results={len(results)}")
+        return {"results": results}
+    except Exception as e:
+        log_feature_fail("search_discovery", str(e)[:200])
+        raise
