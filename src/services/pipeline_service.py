@@ -331,6 +331,11 @@ class PipelineService:
             log_timing("Pipeline Execution", duration * 1000)
             log_separator("double")
 
+            ai_stages = (
+                ["embedding", "hydration", "scorer"]
+                if (collected_data and collected_data.pipeline_metrics)
+                else []
+            )
             result = PipelineResult(
                 success=True,
                 product_name=product.get("name", ""),
@@ -345,6 +350,7 @@ class PipelineService:
                 upload_errors=upload_errors,
                 duration_seconds=duration,
                 pipeline_metrics=collected_data.pipeline_metrics if collected_data else None,
+                ai_stages_used=ai_stages,
             )
 
             # 히스토리 저장
@@ -381,6 +387,11 @@ class PipelineService:
             log_summary_box("파이프라인 실패 요약", summary_items)
             log_separator("double")
 
+            ai_stages = (
+                ["embedding", "hydration", "scorer"]
+                if (collected_data and collected_data.pipeline_metrics)
+                else []
+            )
             result = PipelineResult(
                 success=False,
                 product_name=product.get("name", ""),
@@ -396,6 +407,7 @@ class PipelineService:
                 error_message=str(e),
                 duration_seconds=duration,
                 pipeline_metrics=collected_data.pipeline_metrics if collected_data else None,
+                ai_stages_used=ai_stages,
             )
 
             # 실패 결과도 저장

@@ -286,3 +286,7 @@ class PipelineResult(BaseModel):
     pipeline_metrics: PipelineMetrics | None = Field(
         default=None, description="파이프라인 성능 메트릭"
     )
+    ai_stages_used: list[str] = Field(
+        default_factory=list,
+        description="사용한 AI 단계 (embedding, hydration, scorer 등)",
+    )
