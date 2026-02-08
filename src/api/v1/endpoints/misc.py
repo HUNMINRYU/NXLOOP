@@ -9,7 +9,7 @@ from config.dependencies import get_services
 from config.settings import get_settings
 from schemas.requests import ChatRequest, LeadRequest, RefreshUrlRequest
 from utils.file_store import ensure_output_dir
-from utils.logger import log_feature_end, log_feature_start
+from utils.logger import log_feature_end, log_feature_fail, log_feature_start
 from utils.rate_limit import check_rate_limit, get_remaining_requests
 
 router = APIRouter()
@@ -52,6 +52,33 @@ async def create_lead(request: LeadRequest):
     return {"status": "ok"}
 
 
+GUEST_CHAT_LIMIT = 3
+
+
+@router.get("/chat/remaining")
+async def chat_remaining(
+    http_request: Request,
+    user: OptionalUser = None,
+):
+    """
+    비로그인 시 현재 IP의 남은 챗봇 요청 횟수 반환 (서버 재시작 시 초기화됨).
+    로그인 사용자는 null(무제한).
+    """
+    log_feature_start("chat_remaining", "guest" if user is None else "auth")
+    if user is not None:
+        log_feature_end("chat_remaining")
+        return {"remaining": None}
+
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    forwarded_for = http_request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+
+    remaining = get_remaining_requests(client_ip, max_requests=GUEST_CHAT_LIMIT)
+    log_feature_end("chat_remaining", extra_detail=f"remaining={remaining}")
+    return {"remaining": remaining}
+
+
 @router.post("/chat")
 async def chat(
     chat_request: ChatRequest,
@@ -63,6 +90,7 @@ async def chat(
     - Authenticated users: unlimited access with role-based data store
     - Non-authenticated users: limited to 3 requests per IP with guest data store
     """
+    log_feature_start("chat_reply", "guest" if user is None else "auth")
     services = get_services()
     settings = get_settings()
 
@@ -74,8 +102,9 @@ async def chat(
 
     if user is None:
         # Non-authenticated user - apply rate limiting
-        if not check_rate_limit(client_ip, max_requests=3):
-            remaining = get_remaining_requests(client_ip, max_requests=3)
+        if not check_rate_limit(client_ip, max_requests=GUEST_CHAT_LIMIT):
+            remaining = get_remaining_requests(client_ip, max_requests=GUEST_CHAT_LIMIT)
+            log_feature_fail("chat_reply", "rate limit exceeded")
             raise HTTPException(
                 status_code=429,
                 detail=f"Rate limit exceeded. {remaining} requests remaining.",
@@ -84,18 +113,22 @@ async def chat(
         # Use guest data store for non-authenticated users
         data_store_id = settings.rag_data_stores.get("guest")
         if not data_store_id:
-            # Fallback to default data store if guest not configured
             data_store_id = settings.rag_data_stores.get("editor")
     else:
         # Authenticated user - use role-based data store
         data_store_id = settings.rag_data_stores.get(getattr(user, "role", "editor"))
 
-    reply = await services.chatbot_service.generate_reply(
-        message=chat_request.message,
-        session_id=chat_request.session_id or "",
-        data_store_id=data_store_id,
-    )
-    return reply
+    try:
+        reply = await services.chatbot_service.generate_reply(
+            message=chat_request.message,
+            session_id=chat_request.session_id or "",
+            data_store_id=data_store_id,
+        )
+        log_feature_end("chat_reply")
+        return reply
+    except Exception as e:
+        log_feature_fail("chat_reply", str(e))
+        raise
 
 
 @router.post("/chat/stream")
@@ -110,6 +143,7 @@ async def chat_stream(
     """
     from fastapi.responses import StreamingResponse
 
+    log_feature_start("chat_reply_stream", "guest" if user is None else "auth")
     services = get_services()
     settings = get_settings()
 
@@ -121,8 +155,9 @@ async def chat_stream(
 
     if user is None:
         # Non-authenticated user - apply rate limiting
-        if not check_rate_limit(client_ip, max_requests=3):
-            remaining = get_remaining_requests(client_ip, max_requests=3)
+        if not check_rate_limit(client_ip, max_requests=GUEST_CHAT_LIMIT):
+            remaining = get_remaining_requests(client_ip, max_requests=GUEST_CHAT_LIMIT)
+            log_feature_fail("chat_reply_stream", "rate limit exceeded")
             raise HTTPException(
                 status_code=429,
                 detail=f"Rate limit exceeded. {remaining} requests remaining.",
@@ -136,6 +171,7 @@ async def chat_stream(
         # Authenticated user - use role-based data store
         data_store_id = settings.rag_data_stores.get(getattr(user, "role", "editor"))
 
+    log_feature_end("chat_reply_stream", extra_detail="stream started")
     return StreamingResponse(
         services.chatbot_service.generate_reply_stream(
             message=chat_request.message,

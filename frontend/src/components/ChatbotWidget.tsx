@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import ChatbotPanel from './ChatbotPanel';
-import { useChatbotUsage } from '@/hooks/useChatbotUsage';
+import { useChatbotStatus } from '@/hooks/useChatbotUsage';
 
 // 유백색 말풍선 아이콘 (세련된 스타일)
 function ChatbotIcon() {
@@ -26,7 +26,7 @@ function ChatbotIcon() {
 export default function ChatbotWidget() {
     const [open, setOpen] = useState(false);
     const [showLeadCapture, setShowLeadCapture] = useState(false);
-    const { isAuthenticated, remainingMessages } = useChatbotUsage();
+    const { isAuthenticated, remainingMessages } = useChatbotStatus();
 
     const handleLimitReached = () => {
         setShowLeadCapture(true);
@@ -72,47 +72,59 @@ export default function ChatbotWidget() {
             {/* 챗봇 대화 패널 */}
             <ChatbotPanel isOpen={open} onClose={() => setOpen(false)} onLimitReached={handleLimitReached} />
 
-            {/* 무료 체험 한도 초과 시 팝업 */}
+            {/* 무료 체험 한도 초과 시 모달 + 배경 흐림 (Dimmed) */}
             {showLeadCapture && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
                     <div
-                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        className="absolute inset-0 bg-black/60 backdrop-blur-md"
                         onClick={() => setShowLeadCapture(false)}
+                        aria-hidden
                     />
-                    <div className="relative z-10 bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-100 text-center animate-in fade-in zoom-in duration-300">
-                        <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-6">
-                            ⚠️
+                    <div
+                        className="relative z-10 bg-white rounded-[var(--radius-xl)] p-8 max-w-md w-full shadow-[var(--shadow-soft-lg)] border border-[var(--color-border)] text-center animate-in fade-in zoom-in duration-300"
+                        role="dialog"
+                        aria-modal
+                        aria-labelledby="lead-capture-title"
+                        aria-describedby="lead-capture-desc"
+                    >
+                        <div className="w-14 h-14 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-2xl mx-auto mb-5" aria-hidden>
+                            🔐
                         </div>
-                        <h3 className="text-2xl font-black mb-4 text-slate-900 leading-tight">지식 탐색 한도 도달</h3>
-                        <p className="text-slate-500 font-medium mb-8 leading-relaxed">
-                            무료 사용자의 질문 한도를 모두 소모하셨습니다.
-                            <br />
-                            계속해서 인텔리전스를 활용하시려면 회원가입이 필요합니다.
+                        <h3 id="lead-capture-title" className="text-xl font-bold mb-2 text-[var(--color-foreground)] leading-tight">
+                            로그인이 필요한 서비스입니다
+                        </h3>
+                        <p id="lead-capture-desc" className="text-sm text-[var(--color-muted)] mb-6 leading-relaxed">
+                            챗봇을 계속 이용하시려면 로그인해 주세요. 계정이 없으시면 가입 후 이용해 주세요.
                         </p>
-                        <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-2.5">
                             <button
                                 onClick={() => {
                                     setShowLeadCapture(false);
+                                    setOpen(false);
+                                    window.location.href = '/login';
+                                }}
+                                className="w-full bg-[var(--color-primary)] text-[var(--color-primary-foreground)] font-semibold py-3 rounded-[var(--radius-md)] hover:opacity-90 transition-opacity shadow-[var(--shadow-soft-sm)]"
+                            >
+                                로그인하고 계속하기
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowLeadCapture(false);
+                                    setOpen(false);
                                     window.location.href = '/signup';
                                 }}
-                                className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl hover:bg-slate-800 transition-all shadow-lg active:scale-[0.98]"
+                                className="w-full bg-white text-[var(--color-foreground)] font-medium py-3 rounded-[var(--radius-md)] border border-[var(--color-border)] hover:bg-[var(--color-secondary)] transition-colors"
                             >
-                                30초 만에 무료 회원가입
+                                회원가입하기
                             </button>
                             <button
                                 onClick={() => {
                                     setShowLeadCapture(false);
-                                    window.location.href = '/pricing';
+                                    setOpen(false);
                                 }}
-                                className="w-full bg-white text-slate-800 font-bold py-4 rounded-2xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm active:scale-[0.98]"
+                                className="w-full text-[var(--color-muted)] font-medium py-2 hover:text-[var(--color-foreground)] transition-colors text-sm"
                             >
-                                요금제 보기
-                            </button>
-                            <button
-                                onClick={() => setShowLeadCapture(false)}
-                                className="w-full text-slate-400 font-bold py-2 hover:text-slate-600 transition-all text-sm"
-                            >
-                                나중에 하기
+                                나중에 할게요
                             </button>
                         </div>
                     </div>

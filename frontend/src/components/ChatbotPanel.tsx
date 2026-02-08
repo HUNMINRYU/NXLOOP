@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
-import { sendChatMessage } from '@/lib/api';
+import { getChatRemaining, sendChatMessage } from '@/lib/api';
 import { useChatbotStatus } from '@/hooks/useChatbotUsage';
 import { Message, ChatCard, toChatCard, toSources, Source } from '@/types/chat';
 
@@ -26,8 +26,19 @@ function getErrorMessage(err: unknown): string {
     return '';
 }
 
-function ChatBubble({ msg, onCta }: { msg: Message; onCta?: (card: ChatCard) => void }) {
+function ChatBubble({
+    msg,
+    onCta,
+    onInlineLogin,
+    onInlineSignup,
+}: {
+    msg: Message;
+    onCta?: (card: ChatCard) => void;
+    onInlineLogin?: () => void;
+    onInlineSignup?: () => void;
+}) {
     const isAi = msg.role === 'ai';
+    const showInlineCta = isAi && msg.showInlineCta && (onInlineLogin || onInlineSignup);
 
     const renderSources = (sources: Source[]) => (
         <details className="mt-3 group">
@@ -57,49 +68,82 @@ function ChatBubble({ msg, onCta }: { msg: Message; onCta?: (card: ChatCard) => 
         </details>
     );
 
+    const inlineCtaButtons = showInlineCta && (
+        <div className="flex justify-start w-full mt-1.5 pl-1">
+            <div className="flex flex-wrap gap-2">
+                {onInlineLogin && (
+                    <button
+                        type="button"
+                        onClick={onInlineLogin}
+                        className="text-xs font-semibold text-[var(--color-primary)] hover:underline py-1"
+                    >
+                        로그인하고 계속하기
+                    </button>
+                )}
+                {onInlineSignup && (
+                    <button
+                        type="button"
+                        onClick={onInlineSignup}
+                        className="text-xs font-medium text-[var(--color-muted)] hover:text-[var(--color-foreground)] py-1"
+                    >
+                        회원가입하기
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+
     if (msg.card) {
         const card = msg.card;
         const canAct = Boolean(onCta && (msg.card.action || msg.card.url));
         return (
-            <Card className="w-full max-w-[90%] rounded-[var(--radius-lg)] p-4 text-left">
-                <div className="font-bold text-[var(--color-foreground)] flex items-center gap-2 mb-2">
-                    <span>💡</span> {card.title}
-                </div>
-                <p className="text-sm font-semibold text-[var(--color-muted)] mb-2 whitespace-pre-wrap">
-                    {msg.content}
-                </p>
-                <ul className="list-disc list-inside text-sm font-medium text-[var(--color-muted)] space-y-1 mb-3">
-                    {card.bullets.map((b, i) => (
-                        <li key={i}>{b}</li>
-                    ))}
-                </ul>
-                {card.cta && (
-                    <Button
-                        type="button"
-                        variant="default"
-                        onClick={() => (onCta ? onCta(card) : undefined)}
-                        disabled={!canAct}
-                        className="text-sm px-4 py-2"
-                    >
-                        ◆ {card.cta}
-                    </Button>
-                )}
-                {msg.sources && msg.sources.length > 0 && renderSources(msg.sources)}
-            </Card>
+            <div className="w-full flex flex-col items-start">
+                <Card className="w-full max-w-[90%] rounded-[var(--radius-lg)] p-4 text-left border border-[var(--color-border)] shadow-[var(--shadow-soft-sm)] bg-white">
+                    <div className="font-bold text-[var(--color-foreground)] flex items-center gap-2 mb-2 text-base">
+                        <span className="text-[var(--color-primary)]" aria-hidden>💡</span> {card.title}
+                    </div>
+                    <p className="text-sm font-semibold text-[var(--color-muted)] mb-2 whitespace-pre-wrap">
+                        {msg.content}
+                    </p>
+                    <ul className="list-disc list-inside text-sm font-medium text-[var(--color-muted)] space-y-1 mb-3">
+                        {card.bullets.map((b, i) => (
+                            <li key={i}>{b}</li>
+                        ))}
+                    </ul>
+                    {card.cta && (
+                        <Button
+                            type="button"
+                            variant="default"
+                            onClick={() => (onCta ? onCta(card) : undefined)}
+                            disabled={!canAct}
+                            className="text-sm px-4 py-2"
+                        >
+                            ◆ {card.cta}
+                        </Button>
+                    )}
+                    {msg.sources && msg.sources.length > 0 && renderSources(msg.sources)}
+                </Card>
+                {inlineCtaButtons}
+            </div>
         );
     }
     return (
-        <div className={`flex ${isAi ? 'justify-start' : 'justify-end'} w-full`}>
-            <div
-                className={`max-w-[85%] rounded-[var(--radius-lg)] border border-[var(--color-border)] px-4 py-3 ${
-                    isAi ? 'bg-[var(--color-primary)]/10 text-left' : 'bg-[var(--color-primary)]/10 text-right'
-                }`}
-            >
-                <p className="text-sm font-medium text-[var(--color-foreground)] break-words whitespace-pre-wrap">
-                    {msg.content}
-                </p>
-                {isAi && msg.sources && msg.sources.length > 0 && renderSources(msg.sources)}
+        <div className={`flex flex-col w-full ${isAi ? 'items-start' : 'items-end'}`}>
+            <div className={`flex ${isAi ? 'justify-start' : 'justify-end'} w-full`}>
+                <div
+                    className={`max-w-[85%] rounded-[var(--radius-lg)] px-4 py-3 shadow-[var(--shadow-soft-sm)] ${
+                        isAi
+                            ? 'bg-white border border-[var(--color-border)] text-left rounded-bl-sm'
+                            : 'bg-[var(--color-primary)]/12 border border-[var(--color-primary)]/20 text-right rounded-br-sm'
+                    }`}
+                >
+                    <p className="text-sm font-medium text-[var(--color-foreground)] break-words whitespace-pre-wrap leading-relaxed">
+                        {msg.content}
+                    </p>
+                    {isAi && msg.sources && msg.sources.length > 0 && renderSources(msg.sources)}
+                </div>
             </div>
+            {inlineCtaButtons}
         </div>
     );
 }
@@ -132,13 +176,23 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
     const [isSending, setIsSending] = useState(false);
     const [loadingStatus, setLoadingStatus] = useState('요청을 분석하고 있습니다...');
     const listRef = useRef<HTMLDivElement>(null);
-    const { hasReachedLimit, incrementUsage, isAuthenticated, remainingMessages, checkAuthStatus, forceExpire } =
+    const { hasReachedLimit, incrementUsage, isAuthenticated, remainingMessages, tier, setRemainingMessages, checkAuthStatus, forceExpire } =
         useChatbotStatus();
 
     useEffect(() => {
         checkAuthStatus();
         if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
     }, [messages, checkAuthStatus, isSending, loadingStatus]); // Scroll on status change too
+
+    // 비로그인: 패널 열 때 서버 기준 남은 횟수 동기화 (서버 재시작 시 초기화 반영)
+    useEffect(() => {
+        if (!isOpen || isAuthenticated) return;
+        getChatRemaining()
+            .then((data) => {
+                if (typeof data.remaining === 'number') setRemainingMessages(data.remaining);
+            })
+            .catch(() => {});
+    }, [isOpen, isAuthenticated, setRemainingMessages]);
 
     // Sequential Loading Status Effect
     useEffect(() => {
@@ -204,9 +258,24 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
             };
             setMessages((prev) => [...prev, aiReply]);
 
-            // Increment usage count for non-authenticated users after successful response
+            // 비로그인: 채팅 성공 후 서버 기준 남은 횟수로 동기화 + 3회차면 인라인 CTA 표시
             if (!isAuthenticated) {
-                incrementUsage();
+                getChatRemaining()
+                    .then((data) => {
+                        if (typeof data.remaining === 'number') {
+                            setRemainingMessages(data.remaining);
+                            if (data.remaining === 0) {
+                                setMessages((prev) =>
+                                    prev.map((m, i) =>
+                                        i === prev.length - 1 && m.role === 'ai'
+                                            ? { ...m, showInlineCta: true }
+                                            : m,
+                                    ),
+                                );
+                            }
+                        }
+                    })
+                    .catch(() => incrementUsage());
             }
         } catch (err: unknown) {
             console.error('Chat error:', err);
@@ -226,6 +295,7 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
                     id: `a-${Date.now()}`,
                     role: 'ai',
                     content: '무료 사용량이 초과되었습니다. 로그인 후 계속 이용해주세요.',
+                    showInlineCta: true,
                 };
                 setMessages((prev) => [...prev, aiReply]);
             } else {
@@ -248,69 +318,75 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
             <div className="fixed inset-0 bg-black/40 z-[70] md:block" onClick={onClose} aria-hidden />
             <div
                 className="fixed z-[71] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-soft-lg)] flex flex-col
-          right-0 top-20 bottom-4 md:top-24 md:bottom-6 w-full max-w-full md:max-w-[380px] md:right-4 rounded-[var(--radius-xl)]
+          right-0 top-20 bottom-4 md:top-24 md:bottom-6 w-full max-w-full md:max-w-[380px] md:right-4 rounded-[var(--radius-xl)] overflow-hidden
           transition-transform duration-300 ease-out translate-x-0"
                 role="dialog"
                 aria-modal
                 aria-label="AI 챗봇"
             >
-                <header className="flex items-center justify-between border-b border-[var(--color-border)] p-4 bg-[var(--color-foreground)] text-[var(--color-primary-foreground)] shrink-0">
-                    <div className="flex flex-col">
-                        <h2 className="text-lg font-bold flex items-center gap-2">
+                <header className="flex items-center justify-between px-4 py-3 shrink-0 bg-gradient-to-r from-[var(--color-foreground)] to-[#1e293b] text-white border-b border-white/10">
+                    <div className="flex flex-col gap-0.5">
+                        <h2 className="text-base font-semibold flex items-center gap-2 tracking-tight">
+                            <span className="w-8 h-8 rounded-[var(--radius-md)] bg-white/15 flex items-center justify-center text-sm" aria-hidden>
+                                💬
+                            </span>
                             AI 챗봇
                             {!isAuthenticated && remainingMessages > 0 && (
-                                <span className="bg-red-500 text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-full min-w-[1.2em] text-center leading-none">
+                                <span className="bg-[var(--color-primary)] text-white text-[10px] font-bold px-2 py-0.5 rounded-full min-w-[1.2em] text-center leading-none">
                                     {remainingMessages}
                                 </span>
                             )}
                         </h2>
-                        {!isAuthenticated && (
-                            <p className="text-xs opacity-80 mt-1">
+                        {!isAuthenticated ? (
+                            <p className="text-[11px] text-white/80 font-medium pl-10">
                                 {remainingMessages > 0 ? `무료 질문 ${remainingMessages}회 남음` : '무료 체험 종료'}
+                            </p>
+                        ) : (
+                            <p className="text-[11px] text-white/80 font-medium pl-10">
+                                {tier === 'PRO' || tier === 'BUSINESS' ? '챗봇 무제한' : '챗봇 이용 가능 (무료 10회/일)'}
                             </p>
                         )}
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="w-10 h-10 rounded-[var(--radius-sm)] border border-[var(--color-border)] font-bold hover:bg-[var(--color-surface)] hover:text-[var(--color-foreground)] transition-colors flex items-center justify-center"
+                        className="w-9 h-9 rounded-[var(--radius-md)] bg-white/10 hover:bg-white/20 font-medium text-lg leading-none transition-colors flex items-center justify-center"
                         aria-label="닫기"
                     >
                         ×
                     </button>
                 </header>
 
-                <div ref={listRef} className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 bg-white">
+                <div ref={listRef} className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 bg-[var(--color-teal-light)]/30">
                     {messages.map((msg) => (
-                        <ChatBubble key={msg.id} msg={msg} onCta={handleCta} />
+                        <ChatBubble
+                            key={msg.id}
+                            msg={msg}
+                            onCta={handleCta}
+                            onInlineLogin={
+                                !isAuthenticated
+                                    ? () => {
+                                          onClose();
+                                          router.push('/login');
+                                      }
+                                    : undefined
+                            }
+                            onInlineSignup={
+                                !isAuthenticated
+                                    ? () => {
+                                          onClose();
+                                          router.push('/signup');
+                                      }
+                                    : undefined
+                            }
+                        />
                     ))}
                     {isSending && messages.length > 0 && messages.at(-1)?.role === 'user' && (
                         <LoadingSkeleton status={loadingStatus} />
                     )}
                 </div>
 
-                <div className="p-4 border-t border-[var(--color-border)] bg-[var(--color-surface)] shrink-0 relative">
-                    {hasReachedLimit && (
-                        <div className="absolute inset-0 bg-[var(--color-surface)]/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center text-center p-4 rounded-b-[var(--radius-xl)]">
-                            <p className="text-sm font-bold mb-2 text-[var(--color-foreground)]">
-                                무료 체험분이 소진되었습니다.
-                                <br />
-                                로그인하여 계속하세요.
-                            </p>
-                            <div className="flex flex-col gap-2 w-full max-w-[200px]">
-                                <Button onClick={() => router.push('/login')} className="w-full">
-                                    로그인하러 가기
-                                </Button>
-                                <Button
-                                    onClick={() => router.push('/signup')}
-                                    variant="outline"
-                                    className="w-full bg-transparent border-[var(--color-border)] text-[var(--color-foreground)] hover:bg-[var(--color-surface)]"
-                                >
-                                    회원가입하러 가기
-                                </Button>
-                            </div>
-                        </div>
-                    )}
+                <div className="p-4 border-t border-[var(--color-border)] bg-white shrink-0 relative">
                     <div className="flex gap-2 items-center">
                         <button
                             type="button"

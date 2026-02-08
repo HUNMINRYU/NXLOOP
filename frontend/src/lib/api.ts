@@ -494,6 +494,11 @@ export function logout() {
     });
 }
 
+/** 비로그인 시 서버 기준 남은 챗봇 횟수 (서버 재시작 시 초기화). 로그인 시 null(무제한). */
+export function getChatRemaining() {
+    return request<{ remaining: number | null }>('/chat/remaining', { method: 'GET' });
+}
+
 export function sendChatMessage(payload: { message: string; session_id: string }) {
     return request<{
         message: string;

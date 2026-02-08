@@ -19,6 +19,69 @@ from core.prompts import (
 )
 from utils.logger import log_error, log_info, log_llm_fail, log_llm_request, log_llm_response
 
+# 인사·간단 문구 즉시 응답 (챗봇 응답 속도 개선)
+GREETING_PATTERNS = (
+    "안녕",
+    "반가워",
+    "반갑습니다",
+    "하이",
+    "헬로",
+    "hello",
+    "hi",
+    "뭐해",
+    "뭐하세요",
+)
+GREETING_REPLY = (
+    "반갑습니다! 숏폼 알고리즘과 콘텐츠 전략을 도와드리는 NEXLOOP AI예요. "
+    "마케팅하시려는 제품이나 궁금한 점을 말씀해 주시면 바로 도와드릴게요."
+)
+
+# 사용자 의도 → 서비스 내 링크 안내 (의도 파악 후 카드로 안내)
+INTENT_LINKS: list[tuple[list[str], str, str, list[str], str]] = [
+    (
+        ["요금", "가격", "요금제", "플랜", "구독", "비용", "pricing", "가격표"],
+        "/pricing",
+        "요금제 안내",
+        ["요금제와 플랜을 확인하실 수 있어요.", "가입 후 파이프라인·인사이트를 활용해 보세요."],
+        "요금제 보기",
+    ),
+    (
+        ["로그인", "로그인 하", "로그인해", "로그인 해", "sign in", "login"],
+        "/login",
+        "로그인",
+        ["로그인하면 저장된 프로젝트와 인사이트를 이어서 이용할 수 있어요."],
+        "로그인하기",
+    ),
+    (
+        ["회원가입", "가입", "회원 가입", "sign up", "signup", "가입하기"],
+        "/signup",
+        "회원가입",
+        ["무료로 시작할 수 있어요.", "가입 후 파이프라인과 인사이트를 바로 이용해 보세요."],
+        "회원가입하기",
+    ),
+    (
+        ["파이프라인", "파이프라인 실행", "실행", "분석", "파이프라인 돌", "실행해"],
+        "/pipeline",
+        "파이프라인 실행",
+        ["YouTube·네이버 데이터로 인사이트를 추출할 수 있어요.", "실행 후 결과를 대시보드에서 확인하세요."],
+        "파이프라인 보기",
+    ),
+    (
+        ["인사이트", "대시보드", "결과", "분석 결과", "인사이트 보기", "대시보드 보기"],
+        "/insights",
+        "인사이트·대시보드",
+        ["추출된 인사이트와 분석 결과를 한눈에 볼 수 있어요."],
+        "인사이트 보기",
+    ),
+    (
+        ["홈", "메인", "처음", "홈으로", "main", "home"],
+        "/",
+        "홈",
+        ["메인 페이지에서 서비스 소개와 시작하기를 확인할 수 있어요."],
+        "홈으로",
+    ),
+]
+
 
 class ChatbotService:
     """챗봇 비즈니스 로직"""
@@ -47,10 +110,25 @@ class ChatbotService:
             }
 
         session = self._get_or_create_session(session_id)
-        
-        # 1. 쿼리 최적화
-        search_query = await self._generate_search_query(session, text)
+
+        # 인사·간단 패턴이면 LLM/RAG 없이 즉시 응답 (응답 속도 개선)
+        if self._is_greeting_or_simple(text):
+            session.add_message("user", text)
+            answer = self._get_greeting_reply()
+            session.add_message("ai", answer)
+            return {
+                "session_id": session.session_id,
+                "message": answer,
+                "card": None,
+                "sources": [],
+            }
+
+        # 1. 쿼리 최적화 (인사/단문이면 LLM 호출 생략)
         session.add_message("user", text)
+        if self._should_skip_query_lookup(text):
+            search_query = ""
+        else:
+            search_query = await self._generate_search_query(session, text)
 
         rag_results = []
         use_grounding = False
@@ -100,6 +178,12 @@ class ChatbotService:
 
         card = parsed.get("card") if isinstance(parsed, dict) else None
         card = None if not isinstance(card, dict) else self._sanitize_card(card)
+        # 의도 기반 링크 안내: 카드가 없거나 링크가 없을 때 감지된 의도로 카드 보강
+        intent_card = self._detect_intent_link(text)
+        if intent_card and (
+            card is None or (not card.get("action") and not card.get("url"))
+        ):
+            card = self._sanitize_card(intent_card)
 
         session.add_message("ai", answer)
 
@@ -165,6 +249,41 @@ class ChatbotService:
             self._sessions[new_id] = session
             return session
 
+    def _normalize_for_pattern(self, text: str) -> str:
+        """패턴 매칭용: 공백 제거, 소문자."""
+        return re.sub(r"\s+", "", text).lower().strip()
+
+    def _is_greeting_or_simple(self, text: str) -> bool:
+        """인사·간단 문구면 True (즉시 응답 대상)."""
+        normalized = self._normalize_for_pattern(text)
+        if not normalized or len(normalized) > 30:
+            return False
+        return any(p.lower() in normalized for p in GREETING_PATTERNS)
+
+    def _get_greeting_reply(self) -> str:
+        """인사 시 반환할 고정 답변."""
+        return GREETING_REPLY
+
+    def _should_skip_query_lookup(self, text: str) -> bool:
+        """인사/단문이면 쿼리 LLM 호출 생략 (단계 2). 짧은 문장은 검색 불필요로 간주."""
+        stripped = text.strip()
+        return len(stripped) <= 8
+
+    def _detect_intent_link(self, message: str) -> dict[str, Any] | None:
+        """사용자 메시지에서 의도(요금제/로그인/파이프라인 등)를 감지해 해당 링크 카드를 반환."""
+        normalized = self._normalize_for_pattern(message)
+        if not normalized:
+            return None
+        for keywords, path, title, bullets, cta in INTENT_LINKS:
+            if any(kw.lower() in normalized or kw in message for kw in keywords):
+                return {
+                    "title": title,
+                    "bullets": bullets,
+                    "cta": cta,
+                    "action": path,
+                }
+        return None
+
     def _detect_product(self, message: str) -> dict[str, Any] | None:
         for product in get_product_catalog():
             if product.name in message:
@@ -225,6 +344,8 @@ class ChatbotService:
         title = card.get("title")
         bullets = card.get("bullets")
         cta = card.get("cta")
+        action = card.get("action")
+        url = card.get("url")
 
         if not isinstance(title, str) or not title.strip():
             return None
@@ -235,12 +356,16 @@ class ChatbotService:
         if not cleaned_bullets:
             return None
 
-        cleaned = {
+        cleaned: dict[str, Any] = {
             "title": title.strip(),
             "bullets": cleaned_bullets,
         }
         if isinstance(cta, str) and cta.strip():
             cleaned["cta"] = cta.strip()
+        if isinstance(action, str) and action.strip():
+            cleaned["action"] = action.strip()
+        if isinstance(url, str) and url.strip():
+            cleaned["url"] = url.strip()
         return cleaned
 
     async def _generate_search_query(
@@ -290,12 +415,22 @@ class ChatbotService:
             return
 
         session = self._get_or_create_session(session_id)
-        
-        # 1. 쿼리 최적화 (검색 전 단계)
-        yield f"data: {json.dumps({'step': 'searching', 'message': '질문을 분석하고 있습니다...'}, ensure_ascii=False)}\n\n"
-        
-        search_query = await self._generate_search_query(session, text)
-        session.add_message("user", text) # 쿼리 생성 후 이력에 추가
+
+        # 인사·간단 패턴이면 LLM/RAG 없이 즉시 응답 (응답 속도 개선)
+        if self._is_greeting_or_simple(text):
+            session.add_message("user", text)
+            answer = self._get_greeting_reply()
+            session.add_message("ai", answer)
+            yield f"data: {json.dumps({'step': 'done', 'full_text': answer, 'card': None, 'session_id': session.session_id}, ensure_ascii=False)}\n\n"
+            return
+
+        # 1. 쿼리 최적화 (인사/단문이면 LLM 호출 생략)
+        session.add_message("user", text)
+        if self._should_skip_query_lookup(text):
+            search_query = ""
+        else:
+            yield f"data: {json.dumps({'step': 'searching', 'message': '질문을 분석하고 있습니다...'}, ensure_ascii=False)}\n\n"
+            search_query = await self._generate_search_query(session, text)
 
         rag_results = []
         use_grounding = False
@@ -352,6 +487,12 @@ class ChatbotService:
 
             card = parsed.get("card") if isinstance(parsed, dict) else None
             card = None if not isinstance(card, dict) else self._sanitize_card(card)
+            # 의도 기반 링크 안내 (일반 응답과 동일)
+            intent_card = self._detect_intent_link(text)
+            if intent_card and (
+                card is None or (not card.get("action") and not card.get("url"))
+            ):
+                card = self._sanitize_card(intent_card)
 
             session.add_message("ai", answer)
 

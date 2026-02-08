@@ -20,6 +20,8 @@ export type Message = {
     content: string;
     card?: ChatCard;
     sources?: Source[];
+    /** 3회차 AI 답변 직후 로그인/회원가입 인라인 CTA 노출 여부 */
+    showInlineCta?: boolean;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
