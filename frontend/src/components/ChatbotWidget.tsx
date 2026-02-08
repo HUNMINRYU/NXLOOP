@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import ChatbotPanel from './ChatbotPanel';
 import { useChatbotStatus } from '@/hooks/useChatbotUsage';
 
@@ -24,9 +25,15 @@ function ChatbotIcon() {
 }
 
 export default function ChatbotWidget() {
+    const pathname = usePathname();
     const [open, setOpen] = useState(false);
     const [showLeadCapture, setShowLeadCapture] = useState(false);
     const { isAuthenticated, remainingMessages } = useChatbotStatus();
+
+    // 분석결과·다른 페이지 등 URL 이동 시 챗봇 창 무조건 닫기
+    useEffect(() => {
+        setOpen(false);
+    }, [pathname]);
 
     const handleLimitReached = () => {
         setShowLeadCapture(true);

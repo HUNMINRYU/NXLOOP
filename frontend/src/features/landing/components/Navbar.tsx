@@ -152,6 +152,10 @@ export default function Navbar() {
             console.error('로그아웃 API 호출 실패:', e);
         }
 
+        // 저장된 챗봇 대화 내역 삭제 (로그아웃 시 초기화)
+        const { clearStoredChat } = await import('@/lib/chatStorage');
+        clearStoredChat();
+
         // 클라이언트 측 세션 삭제
         sessionStorage.removeItem('auth-storage');
         window.location.href = '/login';

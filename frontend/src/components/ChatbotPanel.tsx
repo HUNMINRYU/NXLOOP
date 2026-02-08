@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { getChatRemaining, sendChatMessage } from '@/lib/api';
 import { useChatbotStatus } from '@/hooks/useChatbotUsage';
 import { Message, ChatCard, toChatCard, toSources, Source } from '@/types/chat';
+import { loadStoredChat, saveStoredChat } from '@/lib/chatStorage';
 
 const WELCOME: Message = {
     id: 'welcome',
@@ -95,7 +96,9 @@ function ChatBubble({
 
     if (msg.card) {
         const card = msg.card;
-        const canAct = Boolean(onCta && (msg.card.action || msg.card.url));
+        const hasActions = card.actions && card.actions.length > 0;
+        const canActSingle = Boolean(onCta && (msg.card.action || msg.card.url));
+        const canActMulti = Boolean(onCta && hasActions);
         return (
             <div className="w-full flex flex-col items-start">
                 <Card className="w-full max-w-[90%] rounded-[var(--radius-lg)] p-4 text-left border border-[var(--color-border)] shadow-[var(--shadow-soft-sm)] bg-white">
@@ -110,16 +113,42 @@ function ChatBubble({
                             <li key={i}>{b}</li>
                         ))}
                     </ul>
-                    {card.cta && (
-                        <Button
-                            type="button"
-                            variant="default"
-                            onClick={() => (onCta ? onCta(card) : undefined)}
-                            disabled={!canAct}
-                            className="text-sm px-4 py-2"
-                        >
-                            ◆ {card.cta}
-                        </Button>
+                    {hasActions ? (
+                        <div className="flex flex-wrap gap-2">
+                            {card.actions!.map((item, i) => (
+                                <Button
+                                    key={i}
+                                    type="button"
+                                    variant="default"
+                                    onClick={() =>
+                                        onCta
+                                            ? onCta({
+                                                  ...card,
+                                                  cta: item.label,
+                                                  action: item.action,
+                                                  url: item.url,
+                                              })
+                                            : undefined
+                                    }
+                                    disabled={!canActMulti}
+                                    className="text-sm px-4 py-2"
+                                >
+                                    ◆ {item.label}
+                                </Button>
+                            ))}
+                        </div>
+                    ) : (
+                        card.cta && (
+                            <Button
+                                type="button"
+                                variant="default"
+                                onClick={() => (onCta ? onCta(card) : undefined)}
+                                disabled={!canActSingle}
+                                className="text-sm px-4 py-2"
+                            >
+                                ◆ {card.cta}
+                            </Button>
+                        )
                     )}
                     {msg.sources && msg.sources.length > 0 && renderSources(msg.sources)}
                 </Card>
@@ -170,9 +199,15 @@ type ChatbotPanelProps = {
 
 export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: ChatbotPanelProps) {
     const router = useRouter();
-    const [messages, setMessages] = useState<Message[]>([WELCOME]);
+    const [messages, setMessages] = useState<Message[]>(() => {
+        const stored = loadStoredChat();
+        return stored?.messages ?? [WELCOME];
+    });
     const [input, setInput] = useState('');
-    const [sessionId, setSessionId] = useState<string>('');
+    const [sessionId, setSessionId] = useState<string>(() => {
+        const stored = loadStoredChat();
+        return stored?.sessionId ?? '';
+    });
     const [isSending, setIsSending] = useState(false);
     const [loadingStatus, setLoadingStatus] = useState('요청을 분석하고 있습니다...');
     const listRef = useRef<HTMLDivElement>(null);
@@ -183,6 +218,11 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
         checkAuthStatus();
         if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
     }, [messages, checkAuthStatus, isSending, loadingStatus]); // Scroll on status change too
+
+    // 로그인/회원가입·새로고침 후에도 채팅 내역 유지: localStorage에 저장
+    useEffect(() => {
+        saveStoredChat(messages, sessionId);
+    }, [messages, sessionId]);
 
     // 비로그인: 패널 열 때 서버 기준 남은 횟수 동기화 (서버 재시작 시 초기화 반영)
     useEffect(() => {

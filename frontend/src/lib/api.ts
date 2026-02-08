@@ -79,6 +79,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         // Only redirect to login for authenticated endpoints (not /chat for guests)
         if (response.status === 401 && typeof window !== 'undefined' && path !== '/chat') {
             sessionStorage.removeItem('auth-storage');
+            try {
+                const { clearStoredChat } = await import('@/lib/chatStorage');
+                clearStoredChat();
+            } catch {
+                // ignore
+            }
             if (!window.location.pathname.startsWith('/login')) {
                 const currentPath = window.location.pathname + window.location.search;
                 window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`;

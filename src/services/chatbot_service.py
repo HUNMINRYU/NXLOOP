@@ -37,13 +37,15 @@ GREETING_REPLY = (
 )
 
 # 사용자 의도 → 서비스 내 링크 안내 (의도 파악 후 카드로 안내)
-INTENT_LINKS: list[tuple[list[str], str, str, list[str], str]] = [
+# (키워드, path, title, bullets, cta, 즉시 응답용 메시지)
+INTENT_LINKS: list[tuple[list[str], str, str, list[str], str, str]] = [
     (
         ["요금", "가격", "요금제", "플랜", "구독", "비용", "pricing", "가격표"],
         "/pricing",
         "요금제 안내",
         ["요금제와 플랜을 확인하실 수 있어요.", "가입 후 파이프라인·인사이트를 활용해 보세요."],
         "요금제 보기",
+        "요금제 페이지로 안내해 드릴게요.",
     ),
     (
         ["로그인", "로그인 하", "로그인해", "로그인 해", "sign in", "login"],
@@ -51,6 +53,7 @@ INTENT_LINKS: list[tuple[list[str], str, str, list[str], str]] = [
         "로그인",
         ["로그인하면 저장된 프로젝트와 인사이트를 이어서 이용할 수 있어요."],
         "로그인하기",
+        "로그인 페이지로 이동해 드릴게요.",
     ),
     (
         ["회원가입", "가입", "회원 가입", "sign up", "signup", "가입하기"],
@@ -58,13 +61,15 @@ INTENT_LINKS: list[tuple[list[str], str, str, list[str], str]] = [
         "회원가입",
         ["무료로 시작할 수 있어요.", "가입 후 파이프라인과 인사이트를 바로 이용해 보세요."],
         "회원가입하기",
+        "회원가입 페이지로 안내해 드릴게요.",
     ),
     (
         ["파이프라인", "파이프라인 실행", "실행", "분석", "파이프라인 돌", "실행해"],
-        "/pipeline",
+        "/pipeline/create",
         "파이프라인 실행",
         ["YouTube·네이버 데이터로 인사이트를 추출할 수 있어요.", "실행 후 결과를 대시보드에서 확인하세요."],
         "파이프라인 보기",
+        "파이프라인 실행 페이지로 안내해 드릴게요.",
     ),
     (
         ["인사이트", "대시보드", "결과", "분석 결과", "인사이트 보기", "대시보드 보기"],
@@ -72,6 +77,7 @@ INTENT_LINKS: list[tuple[list[str], str, str, list[str], str]] = [
         "인사이트·대시보드",
         ["추출된 인사이트와 분석 결과를 한눈에 볼 수 있어요."],
         "인사이트 보기",
+        "인사이트·대시보드로 안내해 드릴게요.",
     ),
     (
         ["홈", "메인", "처음", "홈으로", "main", "home"],
@@ -79,6 +85,29 @@ INTENT_LINKS: list[tuple[list[str], str, str, list[str], str]] = [
         "홈",
         ["메인 페이지에서 서비스 소개와 시작하기를 확인할 수 있어요."],
         "홈으로",
+        "홈으로 안내해 드릴게요.",
+    ),
+]
+
+# 생성 의도 시 여러 선택지(자동화/썸네일/비디오)를 주기 위한 다중 액션 카드
+# (키워드 목록, 카드 제목, bullets, [(버튼 라벨, 경로), ...], 즉시 응답용 메시지)
+INTENT_CHOICES: list[
+    tuple[list[str], str, list[str], list[tuple[str, str]], str]
+] = [
+    (
+        ["생성", "생성하러", "생성하러 가", "만들러", "만들러 가", "만들기", "콘텐츠 생성"],
+        "어디로 가시겠어요?",
+        [
+            "자동화 파이프라인으로 콘텐츠 생성",
+            "썸네일만 만들기",
+            "비디오만 만들기",
+        ],
+        [
+            ("자동화하러 가기", "/pipeline/create"),
+            ("썸네일만 생성", "/pipeline/thumbnail"),
+            ("비디오만 생성", "/pipeline/video"),
+        ],
+        "어디로 가실지 아래에서 골라 주세요.",
     ),
 ]
 
@@ -120,6 +149,20 @@ class ChatbotService:
                 "session_id": session.session_id,
                 "message": answer,
                 "card": None,
+                "sources": [],
+            }
+
+        # 의도(요금제/로그인/파이프라인/생성 선택지 등)가 잡히면 LLM 없이 고정 메시지+카드 즉시 반환
+        intent_card = self._detect_intent_link(text)
+        if intent_card:
+            reply_message = intent_card.get("message", "해당 페이지로 안내해 드릴게요.")
+            session.add_message("user", text)
+            session.add_message("ai", reply_message)
+            card = self._sanitize_card(intent_card)
+            return {
+                "session_id": session.session_id,
+                "message": reply_message,
+                "card": card,
                 "sources": [],
             }
 
@@ -270,17 +313,28 @@ class ChatbotService:
         return len(stripped) <= 8
 
     def _detect_intent_link(self, message: str) -> dict[str, Any] | None:
-        """사용자 메시지에서 의도(요금제/로그인/파이프라인 등)를 감지해 해당 링크 카드를 반환."""
+        """사용자 메시지에서 의도(요금제/로그인/파이프라인 등)를 감지해 해당 링크 카드를 반환.
+        '생성' 의도는 다중 선택지(자동화/썸네일/비디오) 카드로 반환."""
         normalized = self._normalize_for_pattern(message)
         if not normalized:
             return None
-        for keywords, path, title, bullets, cta in INTENT_LINKS:
+        # 생성 의도: 여러 선택지 카드 (actions 배열)
+        for keywords, title, bullets, choices, intent_message in INTENT_CHOICES:
+            if any(kw.lower() in normalized or kw in message for kw in keywords):
+                return {
+                    "title": title,
+                    "bullets": bullets,
+                    "actions": [{"label": label, "action": path} for label, path in choices],
+                    "message": intent_message,
+                }
+        for keywords, path, title, bullets, cta, intent_message in INTENT_LINKS:
             if any(kw.lower() in normalized or kw in message for kw in keywords):
                 return {
                     "title": title,
                     "bullets": bullets,
                     "cta": cta,
                     "action": path,
+                    "message": intent_message,
                 }
         return None
 
@@ -346,6 +400,7 @@ class ChatbotService:
         cta = card.get("cta")
         action = card.get("action")
         url = card.get("url")
+        actions = card.get("actions")
 
         if not isinstance(title, str) or not title.strip():
             return None
@@ -366,6 +421,25 @@ class ChatbotService:
             cleaned["action"] = action.strip()
         if isinstance(url, str) and url.strip():
             cleaned["url"] = url.strip()
+        # 다중 선택지 카드(생성 → 자동화/썸네일/비디오)
+        if isinstance(actions, list) and actions:
+            cleaned_actions = []
+            for item in actions:
+                if not isinstance(item, dict):
+                    continue
+                lbl = item.get("label")
+                act = item.get("action")
+                u = item.get("url")
+                if isinstance(lbl, str) and lbl.strip():
+                    entry: dict[str, Any] = {"label": lbl.strip()}
+                    if isinstance(act, str) and act.strip():
+                        entry["action"] = act.strip()
+                    if isinstance(u, str) and u.strip():
+                        entry["url"] = u.strip()
+                    if "action" in entry or "url" in entry:
+                        cleaned_actions.append(entry)
+            if cleaned_actions:
+                cleaned["actions"] = cleaned_actions
         return cleaned
 
     async def _generate_search_query(
@@ -422,6 +496,16 @@ class ChatbotService:
             answer = self._get_greeting_reply()
             session.add_message("ai", answer)
             yield f"data: {json.dumps({'step': 'done', 'full_text': answer, 'card': None, 'session_id': session.session_id}, ensure_ascii=False)}\n\n"
+            return
+
+        # 의도(요금제/로그인/파이프라인/생성 선택지 등)가 잡히면 스트리밍 없이 고정 메시지+카드 즉시 반환
+        intent_card = self._detect_intent_link(text)
+        if intent_card:
+            reply_message = intent_card.get("message", "해당 페이지로 안내해 드릴게요.")
+            session.add_message("user", text)
+            session.add_message("ai", reply_message)
+            card = self._sanitize_card(intent_card)
+            yield f"data: {json.dumps({'step': 'done', 'full_text': reply_message, 'card': card, 'session_id': session.session_id}, ensure_ascii=False)}\n\n"
             return
 
         # 1. 쿼리 최적화 (인사/단문이면 LLM 호출 생략)
