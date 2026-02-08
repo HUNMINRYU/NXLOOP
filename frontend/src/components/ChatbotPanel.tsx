@@ -213,6 +213,7 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
     const listRef = useRef<HTMLDivElement>(null);
     const { hasReachedLimit, incrementUsage, isAuthenticated, remainingMessages, tier, setRemainingMessages, checkAuthStatus, forceExpire } =
         useChatbotStatus();
+    const [refillInfo, setRefillInfo] = useState<{ resetsAt: string; limitPerDay: number } | null>(null);
 
     useEffect(() => {
         checkAuthStatus();
@@ -224,15 +225,17 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
         saveStoredChat(messages, sessionId);
     }, [messages, sessionId]);
 
-    // 비로그인: 패널 열 때 서버 기준 남은 횟수 동기화 (서버 재시작 시 초기화 반영)
+    // 패널 열 때 서버 기준 남은 횟수·리필 시각 동기화 (24시간/자정 KST 기준)
     useEffect(() => {
-        if (!isOpen || isAuthenticated) return;
+        if (!isOpen) return;
         getChatRemaining()
             .then((data) => {
                 if (typeof data.remaining === 'number') setRemainingMessages(data.remaining);
+                else if (data.remaining === null) setRemainingMessages(999); // PRO/BUSINESS 무제한
+                if (data.resets_at && typeof data.limit_per_day === 'number') setRefillInfo({ resetsAt: data.resets_at, limitPerDay: data.limit_per_day });
             })
             .catch(() => {});
-    }, [isOpen, isAuthenticated, setRemainingMessages]);
+    }, [isOpen, setRemainingMessages]);
 
     // Sequential Loading Status Effect
     useEffect(() => {
@@ -298,25 +301,24 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
             };
             setMessages((prev) => [...prev, aiReply]);
 
-            // 비로그인: 채팅 성공 후 서버 기준 남은 횟수로 동기화 + 3회차면 인라인 CTA 표시
-            if (!isAuthenticated) {
-                getChatRemaining()
-                    .then((data) => {
-                        if (typeof data.remaining === 'number') {
-                            setRemainingMessages(data.remaining);
-                            if (data.remaining === 0) {
-                                setMessages((prev) =>
-                                    prev.map((m, i) =>
-                                        i === prev.length - 1 && m.role === 'ai'
-                                            ? { ...m, showInlineCta: true }
-                                            : m,
-                                    ),
-                                );
-                            }
+            // 채팅 성공 후 서버 기준 남은 횟수·리필 시각 동기화
+            getChatRemaining()
+                .then((data) => {
+                    if (typeof data.remaining === 'number') {
+                        setRemainingMessages(data.remaining);
+                        if (data.remaining === 0) {
+                            setMessages((prev) =>
+                                prev.map((m, i) =>
+                                    i === prev.length - 1 && m.role === 'ai'
+                                        ? { ...m, showInlineCta: true }
+                                        : m,
+                                ),
+                            );
                         }
-                    })
-                    .catch(() => incrementUsage());
-            }
+                    } else if (data.remaining === null) setRemainingMessages(999);
+                    if (data.resets_at && typeof data.limit_per_day === 'number') setRefillInfo({ resetsAt: data.resets_at, limitPerDay: data.limit_per_day });
+                })
+                .catch(() => incrementUsage());
         } catch (err: unknown) {
             console.error('Chat error:', err);
 
@@ -371,20 +373,32 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
                                 💬
                             </span>
                             AI 챗봇
-                            {!isAuthenticated && remainingMessages > 0 && (
+                            {((!isAuthenticated || tier === 'FREE') && remainingMessages > 0 && remainingMessages <= 10) && (
                                 <span className="bg-[var(--color-primary)] text-white text-[10px] font-bold px-2 py-0.5 rounded-full min-w-[1.2em] text-center leading-none">
                                     {remainingMessages}
                                 </span>
                             )}
                         </h2>
                         {!isAuthenticated ? (
-                            <p className="text-[11px] text-white/80 font-medium pl-10">
-                                {remainingMessages > 0 ? `무료 질문 ${remainingMessages}회 남음` : '무료 체험 종료'}
-                            </p>
+                            <>
+                                <p className="text-[11px] text-white/80 font-medium pl-10">
+                                    {remainingMessages > 0 ? `무료 질문 ${remainingMessages}회 남음` : (tier === 'FREE' ? '오늘 한도 소진' : '무료 체험 종료')}
+                                </p>
+                                {refillInfo && (
+                                    <p className="text-[10px] text-white/60 pl-10">매일 00:00(한국시간)에 {refillInfo.limitPerDay}회 리필</p>
+                                )}
+                            </>
+                        ) : tier === 'PRO' || tier === 'BUSINESS' ? (
+                            <p className="text-[11px] text-white/80 font-medium pl-10">챗봇 무제한</p>
                         ) : (
-                            <p className="text-[11px] text-white/80 font-medium pl-10">
-                                {tier === 'PRO' || tier === 'BUSINESS' ? '챗봇 무제한' : '챗봇 이용 가능 (무료 10회/일)'}
-                            </p>
+                            <>
+                                <p className="text-[11px] text-white/80 font-medium pl-10">
+                                    {remainingMessages > 0 ? `무료 질문 ${remainingMessages}회 남음` : '오늘 한도 소진'}
+                                </p>
+                                {refillInfo && (
+                                    <p className="text-[10px] text-white/60 pl-10">매일 00:00(한국시간)에 {refillInfo.limitPerDay}회 리필</p>
+                                )}
+                            </>
                         )}
                     </div>
                     <button

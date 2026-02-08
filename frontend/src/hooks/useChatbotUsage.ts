@@ -36,8 +36,9 @@ export const useChatbotUsage = create<ChatbotUsageState>()(
 
 /**
  * 챗봇 한도/상태. 로그인 여부·요금제는 useAuthStore 기준.
- * - 비로그인: 무료 3회 후 한도 (백엔드 IP 제한과 동일)
- * - 로그인: 요금제에 따라 이용 (백엔드는 로그인 시 무제한)
+ * - 비로그인: 무료 3회/일 후 한도 (백엔드 IP 제한)
+ * - 로그인 FREE: 10회/일 한도 (백엔드 DB 집계)
+ * - 로그인 PRO/BUSINESS: 무제한
  */
 export const useChatbotStatus = () => {
     const usage = useChatbotUsage();
@@ -45,7 +46,8 @@ export const useChatbotStatus = () => {
     const tier = useAuthStore((s) => s.tier) ?? 'FREE';
 
     const isAuthenticated = typeof email === 'string' && email.length > 0;
-    const hasReachedLimit = !isAuthenticated && usage.remainingMessages <= 0;
+    const hasReachedLimit =
+        usage.remainingMessages <= 0 && (!isAuthenticated || tier === 'FREE');
 
     return {
         ...usage,
