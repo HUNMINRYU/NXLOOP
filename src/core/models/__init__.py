@@ -25,6 +25,7 @@ from .pipeline import (
     CollectedData,
     GeneratedContent,
     PipelineConfig,
+    PipelineMetrics,
     PipelineProgress,
     PipelineResult,
     PipelineStep,
@@ -61,6 +62,7 @@ __all__ = [
     "NaverSearchResult",
     "PainPoint",
     "PipelineConfig",
+    "PipelineMetrics",
     "PipelineProgress",
     "PipelineResult",
     # Pipeline

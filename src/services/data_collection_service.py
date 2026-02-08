@@ -6,7 +6,7 @@ YouTube + Naver + X-Algorithm 인사이트 수집
 import asyncio
 from collections.abc import Callable
 
-from core.models import CollectedData, PipelineConfig, PipelineStep
+from core.models import CollectedData, PipelineConfig, PipelineMetrics, PipelineStep
 from services.data_validator import validate_comments
 from services.market_trend_service import MarketTrendService
 from services.naver_service import NaverService
@@ -159,6 +159,14 @@ class DataCollectionService:
             validated_payload = [item.model_dump() for item in validated]
             analysis_result = await self._orchestrator.run_pipeline(validated_payload)
             collected_data.top_insights = analysis_result.get("insights", [])
+            stats = analysis_result.get("stats") or {}
+            collected_data.pipeline_metrics = PipelineMetrics(
+                stage_timings=stats.get("stage_timings") or {},
+                stage_counts=stats.get("stage_counts") or {},
+                total_filtered=stats.get("total_filtered", 0),
+                filtering_rate=stats.get("filtering_rate", 0.0),
+                throughput_per_sec=stats.get("throughput_per_sec", 0.0),
+            )
             log_info(
                 f"X-Algorithm 분석 완료: {len(collected_data.top_insights)}개 인사이트 도출"
             )

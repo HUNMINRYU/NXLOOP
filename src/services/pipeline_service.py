@@ -344,6 +344,7 @@ class PipelineService:
                 upload_status=upload_status,
                 upload_errors=upload_errors,
                 duration_seconds=duration,
+                pipeline_metrics=collected_data.pipeline_metrics if collected_data else None,
             )
 
             # 히스토리 저장
@@ -394,6 +395,7 @@ class PipelineService:
                 upload_errors=upload_errors,
                 error_message=str(e),
                 duration_seconds=duration,
+                pipeline_metrics=collected_data.pipeline_metrics if collected_data else None,
             )
 
             # 실패 결과도 저장

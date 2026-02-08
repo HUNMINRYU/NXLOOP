@@ -213,6 +213,9 @@ class CollectedData(BaseModel):
     quality_report: dict[str, Any] | None = Field(
         default=None, description="데이터 품질 보고서"
     )
+    pipeline_metrics: "PipelineMetrics | None" = Field(
+        default=None, description="X-Algorithm 파이프라인 성능 메트릭"
+    )
     market_trends: dict[str, Any] | None = Field(
         default=None, description="시장 트렌드 데이터"
     )
