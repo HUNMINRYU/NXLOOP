@@ -52,3 +52,4 @@ async def test_pipeline_service_execute_minimal(
     assert result.success is True
     assert result.product_name == sample_product["name"]
     assert result.collected_data is not None
+    assert isinstance(result.ai_stages_used, list)

@@ -137,17 +137,12 @@ class TestLogout:
 
     def test_logout_with_session(self, client):
         """세션이 있는 상태에서 로그아웃"""
-        # 먼저 로그인하여 세션 쿠키 획득
-        login_resp = client.post(
+        # 로그인 시 클라이언트에 세션/CSRF 쿠키가 자동 저장됨 (per-request cookies 미사용)
+        client.post(
             "/api/v1/auth/login",
             json={"email": "test@example.com", "password": "password123"},
         )
-        cookies = login_resp.cookies
-
-        response = client.post(
-            "/api/v1/auth/logout",
-            cookies=dict(cookies),
-        )
+        response = client.post("/api/v1/auth/logout")
         assert response.status_code == 200
 
 
@@ -161,14 +156,12 @@ class TestMe:
 
     def test_me_with_session(self, client):
         """세션 쿠키로 /me 접근"""
-        # 먼저 로그인
-        login_resp = client.post(
+        # 로그인 시 클라이언트에 세션/CSRF 쿠키가 자동 저장됨 (per-request cookies 미사용)
+        client.post(
             "/api/v1/auth/login",
             json={"email": "test@example.com", "password": "password123"},
         )
-        cookies = login_resp.cookies
-
-        response = client.get("/api/v1/auth/me", cookies=dict(cookies))
+        response = client.get("/api/v1/auth/me")
         assert response.status_code == 200
         data = response.json()
         assert data["email"] == "test@example.com"

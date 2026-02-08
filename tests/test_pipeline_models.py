@@ -9,6 +9,7 @@ def test_pipeline_result_defaults():
 
     assert result.approval_status == "draft"
     assert result.audit_trail == []
+    assert result.ai_stages_used == []
 
 
 def test_pipeline_result_allows_audit_trail_append():
