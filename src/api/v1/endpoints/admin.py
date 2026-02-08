@@ -22,7 +22,35 @@ from src.services.scheduler_service import SchedulerService
 
 class ToggleRequest(BaseModel):
     enabled: bool
+
+
+class EvaluatePredictionsRequest(BaseModel):
+    """회귀 메트릭(MAE, RMSE 등) 평가 요청"""
+
+    predictions: list[float]
+    actuals: list[float]
+
+
+class EvaluateRankingRequest(BaseModel):
+    """순위 메트릭(NDCG@K) 평가 요청"""
+
+    predicted_ranking: list[str]
+    ideal_ranking: list[str]
+    k: int = 5
+
+
+class CompareModelsRequest(BaseModel):
+    """두 모델 예측 비교 요청"""
+
+    model_a_name: str
+    model_a_predictions: list[float]
+    model_b_name: str
+    model_b_predictions: list[float]
+    actuals: list[float]
+
+
 from src.utils.cache import clear_all_api_cache, get_cache_stats
+from src.utils.logger import log_feature_end, log_feature_fail, log_feature_start
 
 router = APIRouter()
 
@@ -40,6 +68,77 @@ async def clear_cache_endpoint(
 ):
     cleared = clear_all_api_cache()
     return {"cleared": cleared}
+
+
+@router.post("/evaluate-model/predictions")
+async def evaluate_model_predictions(
+    request: EvaluatePredictionsRequest,
+    user: Annotated[CurrentUser, Depends(require_role(["admin"]))],
+):
+    """예측값과 실제값으로 회귀 메트릭(MAE, RMSE, MAPE, R²) 계산."""
+    log_feature_start("admin_evaluate_model", "predictions")
+    if len(request.predictions) != len(request.actuals):
+        log_feature_fail("admin_evaluate_model", "predictions/actuals length mismatch")
+        raise HTTPException(
+            status_code=400,
+            detail="predictions와 actuals 길이가 같아야 합니다.",
+        )
+    from src.services.model_evaluator import ModelEvaluator
+
+    evaluator = ModelEvaluator()
+    result = evaluator.evaluate_predictions(request.predictions, request.actuals)
+    log_feature_end("admin_evaluate_model")
+    return result
+
+
+@router.post("/evaluate-model/ranking")
+async def evaluate_model_ranking(
+    request: EvaluateRankingRequest,
+    user: Annotated[CurrentUser, Depends(require_role(["admin"]))],
+):
+    """예측 순위와 이상 순위로 NDCG@K 계산."""
+    log_feature_start("admin_evaluate_model", "ranking")
+    from src.services.model_evaluator import ModelEvaluator
+
+    evaluator = ModelEvaluator()
+    result = evaluator.evaluate_ranking(
+        request.predicted_ranking,
+        request.ideal_ranking,
+        k=request.k,
+    )
+    log_feature_end("admin_evaluate_model")
+    return result
+
+
+@router.post("/evaluate-model/compare")
+async def evaluate_model_compare(
+    request: CompareModelsRequest,
+    user: Annotated[CurrentUser, Depends(require_role(["admin"]))],
+):
+    """두 모델의 예측을 실제값과 비교하여 메트릭·승자 반환."""
+    log_feature_start("admin_evaluate_model", "compare")
+    n = len(request.actuals)
+    if (
+        len(request.model_a_predictions) != n
+        or len(request.model_b_predictions) != n
+    ):
+        log_feature_fail("admin_evaluate_model", "predictions/actuals length mismatch")
+        raise HTTPException(
+            status_code=400,
+            detail="모든 예측 리스트는 actuals와 길이가 같아야 합니다.",
+        )
+    from src.services.model_evaluator import ModelEvaluator
+
+    evaluator = ModelEvaluator()
+    result = evaluator.compare_models(
+        request.model_a_name,
+        request.model_a_predictions,
+        request.model_b_name,
+        request.model_b_predictions,
+        request.actuals,
+    )
+    log_feature_end("admin_evaluate_model")
+    return result
 
 
 from src.services.admin_service import AdminService
