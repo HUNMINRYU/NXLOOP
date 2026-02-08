@@ -538,9 +538,13 @@ export function logout() {
     });
 }
 
-/** 비로그인 시 서버 기준 남은 챗봇 횟수 (서버 재시작 시 초기화). 로그인 시 null(무제한). */
+/** 남은 챗봇 횟수. 비로그인/FREE는 한도·리필 시각 포함. 로그인 PRO/BUSINESS는 remaining: null(무제한). */
 export function getChatRemaining() {
-    return request<{ remaining: number | null }>('/chat/remaining', { method: 'GET' });
+    return request<{
+        remaining: number | null;
+        resets_at?: string;
+        limit_per_day?: number;
+    }>('/chat/remaining', { method: 'GET' });
 }
 
 export function sendChatMessage(payload: { message: string; session_id: string }) {

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -218,3 +218,16 @@ class UserSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user = relationship("User")
+
+
+class UserDailyChatUsage(Base):
+    """FREE tier 로그인 사용자 일일 챗봇 메시지 사용량 (10회/일 제한용)."""
+
+    __tablename__ = "user_daily_chat_usage"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    usage_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)  # KST 기준 날짜
+    count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    __table_args__ = (UniqueConstraint("user_id", "usage_date", name="uq_user_daily_chat_usage"),)

@@ -1,12 +1,17 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, time
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import OptionalUser, require_tier
+from config.constants import TIER_POLICIES
 from config.dependencies import get_services
 from config.settings import get_settings
+from infrastructure.database.connection import get_db_session
+from infrastructure.database.models import KST, UserDailyChatUsage, now_kst
 from schemas.requests import ChatRequest, LeadRequest, RefreshUrlRequest
 from utils.file_store import ensure_output_dir
 from utils.logger import log_feature_end, log_feature_fail, log_feature_start
@@ -55,19 +60,79 @@ async def create_lead(request: LeadRequest):
 GUEST_CHAT_LIMIT = 3
 
 
+def _free_chat_limit() -> int:
+    """FREE tier 일일 챗 한도 (정책 상 10회/일)."""
+    return int(
+        TIER_POLICIES.get("FREE", {}).get("chatbot", {}).get("max_messages_per_day", 10)
+    )
+
+
+def _next_midnight_kst_iso() -> str:
+    """다음 날 자정(KST) ISO 문자열. 24시간 기준 리필 시점."""
+    n = now_kst()
+    next_midnight = datetime.combine(
+        n.date() + timedelta(days=1), time(0, 0), tzinfo=KST
+    )
+    return next_midnight.isoformat()
+
+
+async def _get_free_user_chat_usage_today(session: AsyncSession, user_id: int) -> int:
+    """FREE tier 로그인 사용자의 오늘(KST) 챗 사용 횟수."""
+    today = now_kst().date()
+    result = await session.execute(
+        select(UserDailyChatUsage).where(
+            UserDailyChatUsage.user_id == user_id,
+            UserDailyChatUsage.usage_date == today,
+        )
+    )
+    row = result.scalar_one_or_none()
+    return row.count if row else 0
+
+
+async def _increment_free_user_chat_usage(session: AsyncSession, user_id: int) -> None:
+    """FREE tier 로그인 사용자의 오늘 사용 횟수 1 증가 (없으면 생성)."""
+    today = now_kst().date()
+    result = await session.execute(
+        select(UserDailyChatUsage).where(
+            UserDailyChatUsage.user_id == user_id,
+            UserDailyChatUsage.usage_date == today,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row:
+        row.count += 1
+    else:
+        session.add(UserDailyChatUsage(user_id=user_id, usage_date=today, count=1))
+    await session.commit()
+
+
 @router.get("/chat/remaining")
 async def chat_remaining(
     http_request: Request,
     user: OptionalUser = None,
+    session: AsyncSession = Depends(get_db_session),
 ):
     """
-    비로그인 시 현재 IP의 남은 챗봇 요청 횟수 반환 (서버 재시작 시 초기화됨).
-    로그인 사용자는 null(무제한).
+    비로그인: IP 기준 남은 횟수 (서버 재시작 시 초기화).
+    로그인 FREE: 일 10회 한도, 남은 횟수 반환.
+    로그인 PRO/BUSINESS: null(무제한).
     """
     log_feature_start("chat_remaining", "guest" if user is None else "auth")
     if user is not None:
-        log_feature_end("chat_remaining")
-        return {"remaining": None}
+        tier = getattr(user, "tier", "FREE")
+        if tier in ("PRO", "BUSINESS"):
+            log_feature_end("chat_remaining")
+            return {"remaining": None}
+        # FREE tier: DB 기준 오늘 사용량, 24시간(자정 KST) 기준 다음 리필 시각
+        limit = _free_chat_limit()
+        used = await _get_free_user_chat_usage_today(session, user.id)
+        remaining = max(0, limit - used)
+        log_feature_end("chat_remaining", extra_detail=f"free_remaining={remaining}")
+        return {
+            "remaining": remaining,
+            "resets_at": _next_midnight_kst_iso(),
+            "limit_per_day": limit,
+        }
 
     client_ip = http_request.client.host if http_request.client else "unknown"
     forwarded_for = http_request.headers.get("X-Forwarded-For")
@@ -76,7 +141,11 @@ async def chat_remaining(
 
     remaining = get_remaining_requests(client_ip, max_requests=GUEST_CHAT_LIMIT)
     log_feature_end("chat_remaining", extra_detail=f"remaining={remaining}")
-    return {"remaining": remaining}
+    return {
+        "remaining": remaining,
+        "resets_at": _next_midnight_kst_iso(),
+        "limit_per_day": GUEST_CHAT_LIMIT,
+    }
 
 
 @router.post("/chat")
@@ -84,24 +153,24 @@ async def chat(
     chat_request: ChatRequest,
     http_request: Request,
     user: OptionalUser = None,
+    session: AsyncSession = Depends(get_db_session),
 ):
     """
     Chat endpoint with optional authentication.
-    - Authenticated users: unlimited access with role-based data store
-    - Non-authenticated users: limited to 3 requests per IP with guest data store
+    - 비로그인: IP당 3회/일, guest 데이터스토어
+    - 로그인 FREE: 10회/일 한도, DB 집계
+    - 로그인 PRO/BUSINESS: 무제한
     """
     log_feature_start("chat_reply", "guest" if user is None else "auth")
     services = get_services()
     settings = get_settings()
 
-    # Get client IP address
     client_ip = http_request.client.host if http_request.client else "unknown"
     forwarded_for = http_request.headers.get("X-Forwarded-For")
     if forwarded_for:
         client_ip = forwarded_for.split(",")[0].strip()
 
     if user is None:
-        # Non-authenticated user - apply rate limiting
         if not check_rate_limit(client_ip, max_requests=GUEST_CHAT_LIMIT):
             remaining = get_remaining_requests(client_ip, max_requests=GUEST_CHAT_LIMIT)
             log_feature_fail("chat_reply", "rate limit exceeded")
@@ -109,13 +178,21 @@ async def chat(
                 status_code=429,
                 detail=f"Rate limit exceeded. {remaining} requests remaining.",
             )
-
-        # Use guest data store for non-authenticated users
         data_store_id = settings.rag_data_stores.get("guest")
         if not data_store_id:
             data_store_id = settings.rag_data_stores.get("editor")
     else:
-        # Authenticated user - use role-based data store
+        tier = getattr(user, "tier", "FREE")
+        if tier == "FREE":
+            limit = _free_chat_limit()
+            used = await _get_free_user_chat_usage_today(session, user.id)
+            if used >= limit:
+                log_feature_fail("chat_reply", "free daily limit exceeded")
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"오늘 무료 질문 한도({limit}회)를 모두 사용했습니다. 내일 다시 이용해 주세요.",
+                )
+            await _increment_free_user_chat_usage(session, user.id)
         data_store_id = settings.rag_data_stores.get(getattr(user, "role", "editor"))
 
     try:
@@ -136,10 +213,10 @@ async def chat_stream(
     chat_request: ChatRequest,
     http_request: Request,
     user: OptionalUser = None,
+    session: AsyncSession = Depends(get_db_session),
 ):
     """
-    Chat streaming endpoint (SSE).
-    Returns text/event-stream.
+    Chat streaming endpoint (SSE). 한도 정책은 /chat과 동일.
     """
     from fastapi.responses import StreamingResponse
 
@@ -147,14 +224,12 @@ async def chat_stream(
     services = get_services()
     settings = get_settings()
 
-    # Get client IP address
     client_ip = http_request.client.host if http_request.client else "unknown"
     forwarded_for = http_request.headers.get("X-Forwarded-For")
     if forwarded_for:
         client_ip = forwarded_for.split(",")[0].strip()
 
     if user is None:
-        # Non-authenticated user - apply rate limiting
         if not check_rate_limit(client_ip, max_requests=GUEST_CHAT_LIMIT):
             remaining = get_remaining_requests(client_ip, max_requests=GUEST_CHAT_LIMIT)
             log_feature_fail("chat_reply_stream", "rate limit exceeded")
@@ -162,13 +237,21 @@ async def chat_stream(
                 status_code=429,
                 detail=f"Rate limit exceeded. {remaining} requests remaining.",
             )
-
-        # Use guest data store for non-authenticated users
         data_store_id = settings.rag_data_stores.get("guest")
         if not data_store_id:
             data_store_id = settings.rag_data_stores.get("editor")
     else:
-        # Authenticated user - use role-based data store
+        tier = getattr(user, "tier", "FREE")
+        if tier == "FREE":
+            limit = _free_chat_limit()
+            used = await _get_free_user_chat_usage_today(session, user.id)
+            if used >= limit:
+                log_feature_fail("chat_reply_stream", "free daily limit exceeded")
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"오늘 무료 질문 한도({limit}회)를 모두 사용했습니다. 내일 다시 이용해 주세요.",
+                )
+            await _increment_free_user_chat_usage(session, user.id)
         data_store_id = settings.rag_data_stores.get(getattr(user, "role", "editor"))
 
     log_feature_end("chat_reply_stream", extra_detail="stream started")

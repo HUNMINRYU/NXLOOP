@@ -28,7 +28,7 @@ export default function ChatbotWidget() {
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
     const [showLeadCapture, setShowLeadCapture] = useState(false);
-    const { isAuthenticated, remainingMessages } = useChatbotStatus();
+    const { isAuthenticated, remainingMessages, tier } = useChatbotStatus();
 
     // 분석결과·다른 페이지 등 URL 이동 시 챗봇 창 무조건 닫기
     useEffect(() => {
@@ -65,7 +65,7 @@ export default function ChatbotWidget() {
                     <ChatbotIcon />
 
                     {/* iOS 레드 배지 (#ef4444) */}
-                    {!isAuthenticated && remainingMessages > 0 && (
+                    {((!isAuthenticated || tier === 'FREE') && remainingMessages > 0 && remainingMessages <= 10) && (
                         <span className="absolute -top-2 -right-2 min-w-[22px] h-[22px] bg-[#ef4444] text-white text-[11px] font-black flex items-center justify-center rounded-full shadow-lg border-2 border-slate-900 z-30">
                             {remainingMessages}
                         </span>
