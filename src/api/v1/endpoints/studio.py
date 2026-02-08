@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from api.deps import require_tier
 from services.studio_service import StudioService
+from utils.logger import log_feature_end, log_feature_fail, log_feature_start
 
 router = APIRouter()
 
@@ -37,11 +38,12 @@ class RefineRequest(BaseModel):
 async def create_draft(
     request: DraftRequest,
     user: Annotated[Any, Depends(require_tier("PRO"))],
-    service: StudioService = Depends(get_studio_service),  # noqa: B008
+    service: StudioService = Depends(get_studio_service),
 ):
     """
     제품 정보를 바탕으로 스튜디오용 초안 프롬프트 생성 (PRO 이상)
     """
+    log_feature_start("studio_draft", request.product_name or "")
     try:
         result = await service.generate_draft_prompts(
             product_name=request.product_name,
@@ -53,8 +55,10 @@ async def create_draft(
             lighting_mood=request.lighting_mood,
             brand_kit=request.brand_kit,
         )
+        log_feature_end("studio_draft")
         return result
     except Exception as e:
+        log_feature_fail("studio_draft", str(e)[:200])
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
@@ -62,17 +66,20 @@ async def create_draft(
 async def refine_prompt(
     request: RefineRequest,
     user: Annotated[Any, Depends(require_tier("PRO"))],
-    service: StudioService = Depends(get_studio_service),  # noqa: B008
+    service: StudioService = Depends(get_studio_service),
 ):
     """
     사용자의 피드백을 반영하여 프롬프트를 실시간으로 고도화 (PRO 이상)
     """
+    log_feature_start("studio_refine", "")
     try:
         result = await service.refine_prompt(
             original_prompt=request.original_prompt,
             user_feedback=request.user_feedback,
             brand_kit=request.brand_kit,
         )
+        log_feature_end("studio_refine")
         return result
     except Exception as e:
+        log_feature_fail("studio_refine", str(e)[:200])
         raise HTTPException(status_code=500, detail=str(e)) from e
