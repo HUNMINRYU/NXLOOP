@@ -19,12 +19,20 @@ steps:
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--add-cloudsql-instances=$PROJECT_ID:asia-northeast3:nexloop-db'
-      # NOTE: 시크릿은 Secret Manager로 이관 (Cloud Run env var는 그대로 유지하되 값은 secret 참조)
-      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest,GOOGLE_API_KEY=GOOGLE_API_KEY:latest,NAVER_CLIENT_ID=NAVER_CLIENT_ID:latest,NAVER_CLIENT_SECRET=NAVER_CLIENT_SECRET:latest,NOTION_API_KEY=NOTION_API_KEY:latest'
+      # NOTE: 시크릿은 Secret Manager로 이관. 전체 목록: docs/2026-02-09/cursor/secret-manager-keys.md
+      # Stripe 사용 시: Secret Manager에 STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET 생성 후 아래에 포함
+      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest,GOOGLE_API_KEY=GOOGLE_API_KEY:latest,NAVER_CLIENT_ID=NAVER_CLIENT_ID:latest,NAVER_CLIENT_SECRET=NAVER_CLIENT_SECRET:latest,NOTION_API_KEY=NOTION_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,SLACK_WEBHOOK_URL=SLACK_WEBHOOK_URL:latest,TEST_EMAIL_ALLOWLIST=TEST_EMAIL_ALLOWLIST:latest'
       # NOTE: CORS_ORIGINS는 콤마 포함 값(여러 Origin)일 수 있어 gcloud 파싱이 깨지기 쉬움.
       # 배포 파이프라인에서는 CORS_ORIGINS를 건드리지 않고, 운영 환경에서 별도 업데이트로 관리한다.
       - '--update-env-vars=APP_URL=https://nexloop-backend-ekhgbjmhqq-du.a.run.app'
       - '--min-instances=1'
+      # gcp-cloud-run: 리소스·Sharp Edges·콜드스타트 완화
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--max-instances=100'
+      - '--timeout=300'
+      - '--cpu-boost'
+      - '--startup-probe=initialDelaySeconds=15,timeoutSeconds=5,periodSeconds=10,failureThreshold=24,httpGet.port=8080,httpGet.path=/health'
 
 options:
   logging: CLOUD_LOGGING_ONLY
