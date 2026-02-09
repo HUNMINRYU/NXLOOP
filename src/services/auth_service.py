@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException
-from passlib.context import CryptContext
 from jose import JWTError, jwt
+from passlib.context import CryptContext
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-import secrets
 
 from infrastructure.database.models import Team, User, UserSession
 from utils.logger import (
@@ -19,7 +18,6 @@ from utils.logger import (
     log_stage_end,
     log_stage_fail,
     log_stage_start,
-    log_warning,
 )
 
 

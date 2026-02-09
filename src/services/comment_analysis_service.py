@@ -115,13 +115,13 @@ class CommentAnalysisService:
         # X-Algorithm Pipeline 초기화
         if self._gemini:
             from services.pipeline import (
-                TwoTowerSource,
                 EngagementScorer,
                 FeatureHydrator,
+                MultiFactorDiversityScorer,
                 PipelineOrchestrator,
                 QualityFilter,
                 TopInsightSelector,
-                MultiFactorDiversityScorer
+                TwoTowerSource,
             )
 
             self.pipeline = PipelineOrchestrator(

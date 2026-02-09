@@ -6,7 +6,7 @@ from config.dependencies import get_services
 from infrastructure.database.connection import get_db_session
 
 if TYPE_CHECKING:
-    from src.infrastructure.clients.scheduler_client import CloudSchedulerClient
+    from infrastructure.clients.scheduler_client import CloudSchedulerClient
 
 
 async def get_current_user(
@@ -80,7 +80,7 @@ def get_scheduler_client() -> "CloudSchedulerClient":
     """CloudSchedulerClient 의존성 주입"""
     import os
 
-    from src.infrastructure.clients.scheduler_client import CloudSchedulerClient
+    from infrastructure.clients.scheduler_client import CloudSchedulerClient
 
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID")
     # Cloud Scheduler는 'global'을 지원하지 않으므로 전용 리전 변수 사용

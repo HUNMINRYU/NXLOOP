@@ -139,7 +139,7 @@ class GeminiClient:
             )
 
         stream = await asyncio.to_thread(_get_stream)
-        
+
         try:
             for chunk in stream:
                 yield chunk.text

@@ -6,6 +6,7 @@ Applied Skills:
 """
 
 from __future__ import annotations
+
 from core.prompts import PromptTemplate, prompt_registry
 
 ALGORITHM_SCORING_PROMPT = PromptTemplate(

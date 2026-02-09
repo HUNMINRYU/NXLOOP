@@ -6,7 +6,6 @@ Cloud Run 배포 환경에서는 환경변수 누락/빈값 때문에 CORS가 �
 
 from __future__ import annotations
 
-
 LOCAL_DEV_DEFAULT_ORIGINS: list[str] = ["http://localhost:3000"]
 """로컬 개발 기본 Origin 목록."""
 

@@ -1,6 +1,9 @@
-import numpy as np
 from typing import Any
+
+import numpy as np
+
 from services.pipeline.types import Candidate
+
 
 class MultiFactorDiversityScorer:
     """
@@ -10,8 +13,8 @@ class MultiFactorDiversityScorer:
     """
 
     def __init__(
-        self, 
-        author_decay: float = 0.7, 
+        self,
+        author_decay: float = 0.7,
         format_decay: float = 0.5,
         semantic_threshold: float = 0.88, # 이 유사도 이상이면 의미적으로 중복이라 판단
         floor: float = 0.2
@@ -35,11 +38,11 @@ class MultiFactorDiversityScorer:
         if norm_a == 0 or norm_b == 0: return 0.0
         return np.dot(a, b) / (norm_a * norm_b)
 
-    def apply(self, candidates: list[Candidate], history_context: dict[str, Any] = None) -> list[Candidate]:
+    def apply(self, candidates: list[Candidate], history_context: dict[str, Any] | None = None) -> list[Candidate]:
         author_counts: dict[str, int] = {}
         format_counts: dict[str, int] = {}
         topic_counts: dict[str, int] = {}
-        
+
         # 의미적 중복 체크를 위한 이전 벡터들 보관 (현재 윈도우 내)
         seen_embeddings: list[list[float]] = []
         if history_context:
@@ -50,7 +53,7 @@ class MultiFactorDiversityScorer:
             author = candidate.author.username if candidate.author else "unknown"
             author_count = author_counts.get(author, 0)
             author_multiplier = self._calculate_multiplier(author_count, self.author_decay)
-            
+
             content_format = candidate.metadata.get("format", "unknown")
             format_count = format_counts.get(content_format, 0)
             format_multiplier = self._calculate_multiplier(format_count, self.format_decay)
@@ -62,7 +65,7 @@ class MultiFactorDiversityScorer:
             # 2. Semantic Diversity (의미론적 중복 체크)
             semantic_multiplier = 1.0
             current_embedding = candidate.metadata.get("embedding")
-            
+
             if current_embedding:
                 for past_emb in seen_embeddings:
                     sim = self._cosine_similarity(current_embedding, past_emb)
@@ -75,14 +78,14 @@ class MultiFactorDiversityScorer:
             semantic_multiplier = max(self.floor, semantic_multiplier)
             final_multiplier = author_multiplier * format_multiplier * topic_multiplier * semantic_multiplier
             candidate.score.final_score *= final_multiplier
-            
+
             # 설명 업데이트
             if final_multiplier < 1.0:
                 reasons = []
                 if author_multiplier < 1.0: reasons.append(f"Author({author_count})")
                 if format_multiplier < 1.0: reasons.append(f"Format({format_count})")
                 if semantic_multiplier < 1.0: reasons.append("Semantic(Sim)")
-                
+
                 candidate.score.weighted_components["diversity_multiplier"] = round(final_multiplier, 3)
                 candidate.score.explanation += f" [중복 패널티: {', '.join(reasons)}]"
 

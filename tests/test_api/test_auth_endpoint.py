@@ -40,7 +40,11 @@ def mock_services():
 @pytest.fixture
 def client(mock_services):
     """TestClient with dependency overrides"""
-    with patch("config.dependencies.get_services", return_value=mock_services):
+    # 엔드포인트·deps가 'from config.dependencies import get_services'로 바인딩한 get_services를 호출하므로,
+    # 사용처(auth, api.deps)에서 패치해야 mock이 적용된다.
+    with patch("api.v1.endpoints.auth.get_services", return_value=mock_services), patch(
+        "api.deps.get_services", return_value=mock_services
+    ):
         # DB 초기화를 건너뛰기 위해 lifespan을 override
         with patch("infrastructure.database.connection.init_db", new_callable=AsyncMock):
             from app import app

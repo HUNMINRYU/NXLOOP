@@ -14,6 +14,9 @@ import { PipelineControlSection } from '@/features/pipeline/components/PipelineC
 import { SnsContentSection } from '@/features/pipeline/components/SnsContentSection';
 import { DUMMY_THUMBNAILS, DUMMY_VIDEO_URLS } from '@/lib/dummyData';
 import { HookStrategy, ThumbnailStyle, VideoPresets } from '@/types/api';
+import { fetchPipelineResult, generateVideoFromSelectedThumbnail, predictCtr, selectPipelineOutput } from '@/lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import { usePipelineStore } from '@/store/usePipelineStore';
 
 const slugs: Record<string, { title: string; subtitle: string }> = {
     'data-source': { title: 'Data Source', subtitle: 'Trend and information collection' },
@@ -55,6 +58,148 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
         initialApprovalStatus: pipeline.pipelineResult?.result?.approval_status,
     });
 
+    const taskId = (pipeline.taskId || pipeline.pipelineResult?.task_id || '') as any;
+    const selectedOutputs = (pipeline.pipelineResult?.result as any)?.selected_outputs as Record<string, any> | undefined;
+
+    const [thumbScores, setThumbScores] = useState<
+        Record<string, { predictedCtr?: number; totalScore?: number; grade?: string }>
+    >({});
+    const [thumbRankError, setThumbRankError] = useState<string>('');
+    const [selectedThumbUrl, setSelectedThumbUrl] = useState<string | null>(null);
+    const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+    const [i2vStatus, setI2vStatus] = useState<{ loading: boolean; error: string }>({ loading: false, error: '' });
+    const [distRefresh, setDistRefresh] = useState<{ loading: boolean; error: string }>({ loading: false, error: '' });
+
+    type ThumbCandidate = { url: string; hookText?: string; style?: string };
+
+    const thumbCandidates = useMemo<ThumbCandidate[]>(() => {
+        const out: ThumbCandidate[] = [];
+        const content = pipeline.pipelineResult?.result?.generated_content as any;
+        if (!content) return out;
+
+        if (Array.isArray(content?.multi_thumbnails)) {
+            for (const item of content.multi_thumbnails) {
+                if (!item) continue;
+                const url = item.url || item.thumbnail_url || item.image_url;
+                if (!url) continue;
+                out.push({ url, hookText: item.hook_text, style: item.style });
+            }
+        }
+        if (typeof content?.thumbnail_url === 'string' && content.thumbnail_url) {
+            out.unshift({ url: content.thumbnail_url, hookText: undefined, style: undefined });
+        }
+        // URL 중복 제거
+        const seen = new Set<string>();
+        return out.filter((x) => {
+            if (seen.has(x.url)) return false;
+            seen.add(x.url);
+            return true;
+        });
+    }, [pipeline.pipelineResult]);
+
+    const rankedThumbCandidates = useMemo(() => {
+        // 점수 기반 정렬이 가능한 경우: 점수(CTR/score) 내림차순
+        // 불가능한 경우(권한/상태 등): 파일명(=URL 마지막 경로) 기준으로 고정 정렬해 화면이 흔들리지 않게 한다.
+        const toScore = (url: string): number | null => {
+            const s = thumbScores[url]?.predictedCtr ?? thumbScores[url]?.totalScore;
+            return typeof s === 'number' && Number.isFinite(s) ? s : null;
+        };
+        const toName = (url: string): string => {
+            try {
+                const u = new URL(url);
+                const parts = (u.pathname || '').split('/').filter(Boolean);
+                return decodeURIComponent(parts.at(-1) || url);
+            } catch {
+                const parts = (url || '').split('/').filter(Boolean);
+                return parts.at(-1) || url;
+            }
+        };
+
+        const items = thumbCandidates.map((c, idx) => ({ ...c, _idx: idx }));
+        items.sort((a, b) => {
+            const sa = toScore(a.url);
+            const sb = toScore(b.url);
+            const aHas = sa != null;
+            const bHas = sb != null;
+
+            if (aHas !== bHas) return aHas ? -1 : 1;
+            if (aHas && bHas && sa !== sb) return (sb as number) - (sa as number);
+
+            const na = toName(a.url);
+            const nb = toName(b.url);
+            const nameCmp = na.localeCompare(nb);
+            if (nameCmp !== 0) return nameCmp;
+
+            return a._idx - b._idx;
+        });
+        return items.map(({ _idx, ...rest }) => rest);
+    }, [thumbCandidates, thumbScores]);
+
+    useEffect(() => {
+        const thumb = selectedOutputs?.thumbnail?.url;
+        const video = selectedOutputs?.video?.url;
+        if (typeof thumb === 'string') setSelectedThumbUrl(thumb);
+        if (typeof video === 'string') setSelectedVideoUrl(video);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pipeline.pipelineResult?.task_id]);
+
+    useEffect(() => {
+        if (!taskId) return;
+        if (thumbCandidates.length === 0) return;
+
+        const toNum = (v: unknown): number | undefined => {
+            if (typeof v === 'number' && Number.isFinite(v)) return v;
+            if (typeof v === 'string') {
+                const n = Number(v);
+                return Number.isFinite(n) ? n : undefined;
+            }
+            return undefined;
+        };
+
+        let cancelled = false;
+        setThumbRankError('');
+
+        (async () => {
+            try {
+                const hooks = thumbCandidates.map((c) => c.hookText).filter(Boolean) as string[];
+                const results = await Promise.all(
+                    thumbCandidates.map(async (c) => {
+                        const title = c.hookText || pipeline.selectedProduct || 'thumbnail';
+                        const desc = c.style ? `thumbnail style: ${c.style}` : '';
+                        const competitorTitles = hooks.filter((h) => h !== c.hookText).slice(0, 5);
+                        const res = await predictCtr({
+                            task_id: taskId,
+                            title,
+                            thumbnail_description: desc,
+                            competitor_titles: competitorTitles,
+                        });
+                        const p = res?.prediction || {};
+                        return {
+                            url: c.url,
+                            predictedCtr: toNum((p as any).predicted_ctr),
+                            totalScore: toNum((p as any).total_score),
+                            grade: typeof (p as any).grade === 'string' ? ((p as any).grade as string) : undefined,
+                        };
+                    }),
+                );
+                if (cancelled) return;
+                const map: Record<string, { predictedCtr?: number; totalScore?: number; grade?: string }> = {};
+                results.forEach((r) => {
+                    map[r.url] = { predictedCtr: r.predictedCtr, totalScore: r.totalScore, grade: r.grade };
+                });
+                setThumbScores(map);
+            } catch (e: any) {
+                if (cancelled) return;
+                // PRO 미만(403) 또는 task 컨텍스트 불충분 등은 조용히 폴백(원본 순서)
+                setThumbRankError('CTR 랭킹을 불러오지 못했습니다. (권한/상태에 따라 정렬이 생략될 수 있어요)');
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [taskId, thumbCandidates, pipeline.selectedProduct]);
+
     if (!item) {
         return (
             <>
@@ -90,6 +235,78 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
 
     // Common Layout for non-studio slugs
     if (slug !== 'create' && slug !== 'thumbnail' && slug !== 'video') {
+        if (slug === 'distribution') {
+            const selectedThumb = selectedOutputs?.thumbnail;
+            const selectedVideo = selectedOutputs?.video;
+            return (
+                <>
+                    <Navbar />
+                    <main className="relative min-h-screen overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-slate-100" />
+                        <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/[0.02] via-transparent to-purple-500/[0.02]" />
+                        <div className="relative z-10 p-8 pt-24">
+                            <Card className="max-w-3xl mx-auto p-8 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
+                                <h1 className="font-display text-3xl font-bold text-slate-900">Distribution</h1>
+                                <p className="mt-2 text-slate-600">Create에서 채택한 대표 산출물을 기준으로 다음 단계를 진행합니다.</p>
+                                {distRefresh.error ? (
+                                    <p className="mt-3 text-sm text-rose-600 font-semibold">{distRefresh.error}</p>
+                                ) : null}
+
+                                <div className="mt-6 grid gap-6 md:grid-cols-2">
+                                    <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                        <p className="text-xs font-semibold text-slate-500">선택된 썸네일</p>
+                                        {selectedThumb?.url ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={selectedThumb.url} alt="selected thumbnail" className="mt-3 w-full aspect-[9/16] object-cover rounded-lg" />
+                                        ) : (
+                                            <p className="mt-3 text-sm text-slate-500">선택된 썸네일이 없습니다.</p>
+                                        )}
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                        <p className="text-xs font-semibold text-slate-500">선택된 비디오</p>
+                                        {selectedVideo?.url ? (
+                                            <video src={selectedVideo.url} controls className="mt-3 w-full rounded-lg" />
+                                        ) : (
+                                            <p className="mt-3 text-sm text-slate-500">선택된 비디오가 없습니다.</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="mt-6 flex gap-3">
+                                    <Button
+                                        onClick={async () => {
+                                            if (!taskId) return;
+                                            setDistRefresh({ loading: true, error: '' });
+                                            try {
+                                                const refreshed = await fetchPipelineResult(taskId);
+                                                usePipelineStore.getState().setExecutionState({ result: refreshed });
+                                            } catch (e: any) {
+                                                const msg =
+                                                    typeof e?.message === 'string'
+                                                        ? e.message
+                                                        : '결과를 새로고침하지 못했습니다.';
+                                                setDistRefresh({ loading: false, error: msg });
+                                                return;
+                                            } finally {
+                                                setDistRefresh((s) => ({ ...s, loading: false }));
+                                            }
+                                        }}
+                                        disabled={!taskId || distRefresh.loading}
+                                        variant="secondary"
+                                        className="bg-white text-slate-900 border border-slate-200 hover:bg-slate-50 font-semibold disabled:opacity-60"
+                                    >
+                                        {distRefresh.loading ? '새로고침 중...' : '결과 새로고침'}
+                                    </Button>
+                                    <Button asChild className="bg-slate-900 hover:bg-slate-800 text-white font-semibold">
+                                        <Link href="/pipeline/create">Create로 돌아가기</Link>
+                                    </Button>
+                                </div>
+                            </Card>
+                        </div>
+                    </main>
+                </>
+            );
+        }
         return (
             <>
                 <Navbar />
@@ -183,28 +400,160 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                                 <h2 className="text-xl font-bold mb-4 text-slate-900">SNS Content</h2>
                                 <SnsContentSection socialPosts={pipeline.socialPosts} />
                             </Card>
-                            <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
-	                                <h2 className="text-xl font-bold mb-4 text-slate-900">Thumbnails</h2>
+	                            <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
+		                                <h2 className="text-xl font-bold mb-4 text-slate-900">Thumbnails</h2>
+                                    {thumbRankError ? <p className="text-sm text-rose-600 font-semibold mb-2">{thumbRankError}</p> : null}
 	                                <div className="grid grid-cols-2 gap-3">
-	                                    {(pipeline.thumbnails.length ? pipeline.thumbnails : DUMMY_THUMBNAILS).map(
-	                                        (url, i) => (
-	                                            // eslint-disable-next-line @next/next/no-img-element -- 외부/동적 URL(서명 URL 포함)이라 next/image 최적화 적용이 어렵습니다.
-	                                            <img
-	                                                key={i}
-	                                                src={url}
-	                                                alt="thumb"
-	                                                className="w-full aspect-[9/16] object-cover rounded-md"
-	                                            />
-                                        ),
-                                    )}
+	                                    {(rankedThumbCandidates.length
+                                            ? rankedThumbCandidates
+                                            : (pipeline.thumbnails.length ? pipeline.thumbnails.map((url) => ({ url })) : DUMMY_THUMBNAILS.map((url) => ({ url })))
+                                        ).map((item: any, i: number) => {
+                                            const url = item.url as string;
+                                            const score = thumbScores[url];
+                                            const isSelected = selectedThumbUrl === url;
+                                            return (
+                                                <div key={`${url}-${i}`} className="rounded-md border border-slate-200 bg-white overflow-hidden">
+                                                    {/* eslint-disable-next-line @next/next/no-img-element -- 외부/동적 URL(서명 URL 포함)이라 next/image 최적화 적용이 어렵습니다. */}
+                                                    <img src={url} alt="thumb" className="w-full aspect-[9/16] object-cover" />
+                                                    <div className="p-2 flex items-center justify-between gap-2">
+                                                        <div className="text-[11px] text-slate-600">
+                                                            {score?.predictedCtr != null ? (
+                                                                <span className="font-semibold text-slate-900">
+                                                                    {score.predictedCtr}% {score.grade ? `(${score.grade})` : ''}
+                                                                </span>
+                                                            ) : score?.totalScore != null ? (
+                                                                <span className="font-semibold text-slate-900">score {score.totalScore}</span>
+                                                            ) : (
+                                                                <span>-</span>
+                                                            )}
+                                                        </div>
+	                                                        <Button
+	                                                            onClick={async () => {
+	                                                                if (!taskId) return;
+	                                                                await selectPipelineOutput({
+	                                                                    task_id: taskId,
+	                                                                    kind: 'thumbnail',
+	                                                                    url,
+	                                                                    meta: { ...(score || {}), hook_text: item.hookText, style: item.style },
+	                                                                });
+	                                                                // Distribution 등 다른 탭에서도 바로 보이도록 결과를 갱신한다.
+	                                                                try {
+	                                                                    const refreshed = await fetchPipelineResult(taskId);
+	                                                                    usePipelineStore.getState().setExecutionState({ result: refreshed });
+	                                                                } catch {
+	                                                                    // ignore (UI는 로컬 상태로도 표시됨)
+	                                                                }
+	                                                                setSelectedThumbUrl(url);
+	                                                            }}
+	                                                            variant={isSelected ? 'secondary' : 'default'}
+	                                                            className={
+                                                                isSelected
+                                                                    ? 'bg-slate-900 hover:bg-slate-800 text-white font-semibold'
+                                                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white font-semibold'
+                                                            }
+                                                        >
+                                                            {isSelected ? '채택됨' : '채택'}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                 </div>
-                            </Card>
-                            <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
-                                <h2 className="text-xl font-bold mb-4 text-slate-900">Videos</h2>
-                                <div className="space-y-4">
-                                    {(pipeline.videoUrls.length ? pipeline.videoUrls : DUMMY_VIDEO_URLS).map(
-                                        (url, i) => (
-                                            <video key={i} src={url} controls className="w-full rounded-md" />
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                    {selectedThumbUrl ? (
+                                        <p className="text-sm text-slate-700 font-medium">
+                                            선택됨: <span className="font-semibold">thumbnail</span>
+                                        </p>
+                                    ) : (
+                                        <p className="text-sm text-slate-500">아직 채택된 썸네일이 없습니다.</p>
+                                    )}
+                                    <Button asChild variant="secondary" className="bg-slate-900 hover:bg-slate-800 text-white font-semibold">
+                                        <Link href="/pipeline/distribution">다음 단계로</Link>
+                                    </Button>
+                                </div>
+	                            </Card>
+	                            <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
+	                                <h2 className="text-xl font-bold mb-4 text-slate-900">Videos</h2>
+	                                {i2vStatus.error ? <p className="text-sm text-rose-600 font-semibold mb-2">{i2vStatus.error}</p> : null}
+	                                <div className="mb-4 flex flex-wrap gap-2">
+	                                    <Button
+	                                        onClick={async () => {
+	                                            if (!taskId) return;
+	                                            if (!selectedThumbUrl) {
+	                                                setI2vStatus({ loading: false, error: '먼저 썸네일을 채택해 주세요.' });
+	                                                return;
+	                                            }
+	                                            setI2vStatus({ loading: true, error: '' });
+	                                            try {
+	                                                const res = await generateVideoFromSelectedThumbnail(taskId);
+	                                                if (res?.video_url) {
+	                                                    setSelectedVideoUrl(res.video_url);
+	                                                }
+	                                                // 서버 쪽에서 selected_outputs.video를 자동 채택하므로, 화면 상태도 동기화한다.
+	                                                try {
+	                                                    const refreshed = await fetchPipelineResult(taskId);
+	                                                    usePipelineStore.getState().setExecutionState({ result: refreshed });
+	                                                } catch {
+	                                                    // ignore
+	                                                }
+	                                            } catch (e: any) {
+	                                                const msg =
+	                                                    typeof e?.message === 'string'
+	                                                        ? e.message
+	                                                        : '선택 썸네일 기반 비디오 생성에 실패했습니다.';
+	                                                setI2vStatus({ loading: false, error: msg });
+	                                                return;
+	                                            } finally {
+	                                                setI2vStatus((s) => ({ ...s, loading: false }));
+	                                            }
+	                                        }}
+	                                        disabled={!selectedThumbUrl || i2vStatus.loading}
+	                                        variant="secondary"
+	                                        className="bg-slate-900 hover:bg-slate-800 text-white font-semibold disabled:opacity-60"
+	                                    >
+	                                        {i2vStatus.loading ? '생성 중...' : '선택 썸네일로 비디오 생성'}
+	                                    </Button>
+	                                    <p className="text-xs text-slate-500 self-center">
+	                                        선택된 썸네일을 Start Frame으로 사용해 I2V로 새 비디오를 만들고 자동 채택합니다.
+	                                    </p>
+	                                </div>
+	                                <div className="space-y-4">
+	                                    {(pipeline.videoUrls.length ? pipeline.videoUrls : DUMMY_VIDEO_URLS).map(
+	                                        (url, i) => (
+	                                            <div key={i} className="rounded-md border border-slate-200 bg-white overflow-hidden">
+                                                <video src={url} controls className="w-full" />
+                                                <div className="p-2 flex items-center justify-between">
+                                                    <div className="text-[11px] text-slate-600">
+                                                        {selectedVideoUrl === url ? <span className="font-semibold text-slate-900">채택됨</span> : <span>-</span>}
+                                                    </div>
+	                                                    <Button
+	                                                        onClick={async () => {
+	                                                            if (!taskId) return;
+	                                                            await selectPipelineOutput({
+	                                                                task_id: taskId,
+	                                                                kind: 'video',
+	                                                                url,
+	                                                                meta: {},
+	                                                            });
+	                                                            try {
+	                                                                const refreshed = await fetchPipelineResult(taskId);
+	                                                                usePipelineStore.getState().setExecutionState({ result: refreshed });
+	                                                            } catch {
+	                                                                // ignore
+	                                                            }
+	                                                            setSelectedVideoUrl(url);
+	                                                        }}
+	                                                        variant={selectedVideoUrl === url ? 'secondary' : 'default'}
+	                                                        className={
+                                                            selectedVideoUrl === url
+                                                                ? 'bg-slate-900 hover:bg-slate-800 text-white font-semibold'
+                                                                : 'bg-indigo-600 hover:bg-indigo-700 text-white font-semibold'
+                                                        }
+                                                    >
+                                                        {selectedVideoUrl === url ? '채택됨' : '채택'}
+                                                    </Button>
+                                                </div>
+                                            </div>
                                         ),
                                     )}
                                 </div>

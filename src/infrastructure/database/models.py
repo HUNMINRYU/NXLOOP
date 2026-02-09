@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -231,3 +242,109 @@ class UserDailyChatUsage(Base):
     count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     __table_args__ = (UniqueConstraint("user_id", "usage_date", name="uq_user_daily_chat_usage"),)
+
+
+class CTRRankerRun(Base):
+    """CTR Ranker 실행 단위.
+
+    승인 워크플로우에서 "이번 실행(run)에서 어떤 후보를 보여줬고 무엇을 채택했는지"를
+    재현 가능하게 남기는 것이 목적입니다.
+    """
+
+    __tablename__ = "ctr_ranker_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    product_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    report_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    mode: Mapped[str] = mapped_column(String(50), default="youtube", nullable=False)
+
+    # 원본/리포트 위치(로컬 경로 또는 GCS object path). 운영에서는 GCS가 권장됩니다.
+    raw_dataset_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    topk_csv_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    report_json_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # 요약 메트릭(예: ndcg@k 등) 저장. UI에서 "성과가 있었는지"를 빠르게 보여줄 수 있습니다.
+    metrics_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_kst, nullable=False)
+
+    candidates = relationship(
+        "CTRRankerCandidate",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    approval = relationship(
+        "CTRRankerApproval",
+        back_populates="run",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class CTRRankerCandidate(Base):
+    """run에서 노출되는 후보(제목+썸네일 세트) 단위."""
+
+    __tablename__ = "ctr_ranker_candidates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("ctr_ranker_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # 원본 식별자(YouTube video_id 등)
+    video_id: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    thumbnail_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Before/After topK 비교를 위해 둘 다 저장 (스케일이 달라 직접 비교는 금지).
+    baseline_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    baseline_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    after_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    after_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    proxy_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    meta_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_kst, nullable=False)
+
+    run = relationship("CTRRankerRun", back_populates="candidates")
+    approvals = relationship("CTRRankerApproval", back_populates="candidate")
+
+    __table_args__ = (
+        # 같은 run 안에서 동일 video_id가 중복 저장되는 실수를 방지 (video_id 없는 경우는 허용)
+        UniqueConstraint("run_id", "video_id", name="uq_ctr_ranker_candidates_run_video"),
+    )
+
+
+class CTRRankerApproval(Base):
+    """run 단위 채택 결과 (제품당 1개 승인)."""
+
+    __tablename__ = "ctr_ranker_approvals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("ctr_ranker_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    candidate_id: Mapped[int] = mapped_column(
+        ForeignKey("ctr_ranker_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    approved_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_kst, nullable=False)
+
+    run = relationship("CTRRankerRun", back_populates="approval")
+    candidate = relationship("CTRRankerCandidate", back_populates="approvals")
+    approved_by = relationship("User")

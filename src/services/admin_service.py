@@ -3,11 +3,11 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.audit import record_audit_log
-from src.core.interfaces.storage import IStorageService
-from src.infrastructure.clients.scheduler_client import CloudSchedulerClient
-from src.infrastructure.database.models import AuditLog, Role, Team
-from src.services.scheduler_service import SchedulerService
+from core.audit import record_audit_log
+from core.interfaces.storage import IStorageService
+from infrastructure.clients.scheduler_client import CloudSchedulerClient
+from infrastructure.database.models import AuditLog, Role, Team
+from services.scheduler_service import SchedulerService
 
 
 class AdminService:

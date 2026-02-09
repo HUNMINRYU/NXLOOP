@@ -80,6 +80,7 @@ export interface GeneratedThumbnail {
   thumbnail_url?: string; // Unified access might be needed
   image_url?: string;
   style?: string;
+  hook_text?: string;
 }
 
 export interface GeneratedContent {
@@ -97,6 +98,7 @@ export interface PipelineResultDetails {
   collected_data?: CollectedData;
   strategy?: MarketingStrategy;
   generated_content?: GeneratedContent;
+  selected_outputs?: Record<string, unknown>;
   prompt_log?: Record<string, unknown>;
   audit_trail?: Array<{
     action: string;

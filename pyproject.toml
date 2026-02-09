@@ -1,7 +1,7 @@
 [project]
 name = "nexloop"
 version = "1.0.0"
-description = "Blueguard Marketing AI Dashboard - SOLID Architecture"
+description = "Nexloop AI - Enterprise marketing & creative automation platform (Vertex AI, Gemini, Veo)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -44,6 +44,8 @@ dev = [
     "black>=23.0.0",
     "ruff>=0.1.0",
     "mypy>=1.5.0",
+    # 경량(ML 1단계) 학습 스크립트용 (런타임 의존성에는 포함하지 않음)
+    "scikit-learn>=1.5.0",
 ]
 
 [build-system]
@@ -79,7 +81,7 @@ select = [
     "A",   # flake8-builtins
     "ASYNC", # flake8-async
 ]
-ignore = ["E501"]
+ignore = ["E501", "B008"]  # B008: FastAPI Depends() in default args is intentional
 exclude = [
     ".agent",
     ".idea",
@@ -99,6 +101,9 @@ no_implicit_optional = true
 warn_return_any = true
 mypy_path = ["src"]
 exclude = "(^tests/)"
+# 'mypy src' 시 동일 파일이 src.xxx / xxx 두 이름으로 발견되는 것 방지. 패키지별 실행 시 중복 없음.
+# 권장: PYTHONPATH=src mypy -p api -p config -p core -p infrastructure -p schemas -p services -p utils
+explicit_package_bases = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

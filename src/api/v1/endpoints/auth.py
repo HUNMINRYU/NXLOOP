@@ -6,7 +6,7 @@ from api.deps import CurrentUser
 from config.dependencies import get_services
 from infrastructure.database.connection import get_db_session
 from schemas.requests import AuthLoginRequest, AuthSignupRequest
-from utils.logger import log_feature_end, log_feature_start, log_info, log_warning
+from utils.logger import log_feature_end, log_feature_start, log_info
 
 router = APIRouter()
 

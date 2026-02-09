@@ -6,7 +6,12 @@ from api.deps import CurrentUser
 from config.settings import get_settings
 from infrastructure.database.connection import get_db_session
 from services.stripe_service import StripeService
-from utils.logger import get_logger, log_feature_end, log_feature_fail, log_feature_start
+from utils.logger import (
+    get_logger,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
+)
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -56,7 +61,7 @@ async def create_checkout_session(user: CurrentUser) -> dict[str, str]:
 async def stripe_webhook(
     request: Request,
     stripe_signature: str = Header(None),
-    db: AsyncSession = Depends(get_db_session),  # noqa: B008
+    db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, str]:
     """Stripe Webhook 수신 엔드포인트"""
     log_feature_start("stripe_webhook", "event receive")

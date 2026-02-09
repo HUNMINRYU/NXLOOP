@@ -12,7 +12,12 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from infrastructure.database.connection import get_db_session
 from schemas.requests import PipelineRequest
 from services.pipeline_runner import execute_pipeline_task, init_pipeline_status
-from utils.logger import get_logger, log_feature_end, log_feature_fail, log_feature_start
+from utils.logger import (
+    get_logger,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
+)
 
 logger = get_logger(__name__)
 

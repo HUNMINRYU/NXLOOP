@@ -22,6 +22,9 @@ export default function AdminPage() {
                 <Link href="/admin/scheduler">
                     <Button variant="default" className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">스케줄러 관리</Button>
                 </Link>
+                <Link href="/admin/ctr-ranker">
+                    <Button variant="default" className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">CTR Ranker 승인</Button>
+                </Link>
             </div>
         </Card>
     );

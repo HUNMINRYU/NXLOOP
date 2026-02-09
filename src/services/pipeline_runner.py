@@ -10,7 +10,12 @@ from config.settings import get_settings
 from core.models import PipelineConfig
 from core.state import PIPELINE_RESULTS, PIPELINE_STATUS
 from schemas.requests import PipelineRequest
-from utils.logger import get_logger, log_feature_end, log_feature_fail, log_feature_start
+from utils.logger import (
+    get_logger,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
+)
 
 logger = get_logger(__name__)
 
