@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException
-from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,12 +21,7 @@ from utils.logger import (
 
 
 class AuthService:
-    def __init__(
-        self, secret: str, expire_hours: int, algorithm: str = "HS256"
-    ) -> None:
-        self._secret = secret
-        self._expire_hours = expire_hours
-        self._algorithm = algorithm
+    def __init__(self) -> None:
         self._pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         # 서버 세션 TTL(안전장치). 쿠키는 브라우저 종료 시 사라지게 운용한다.
         self.session_expire_hours = 8
@@ -39,31 +33,6 @@ class AuthService:
     def verify_password(self, plain: str, hashed: str) -> bool:
         trimmed = plain.encode("utf-8")[:72]
         return self._pwd_context.verify(trimmed, hashed)
-
-    def _create_token(self, user: User) -> str:
-        """테스트/내부용 JWT 생성 (role 포함)."""
-        now = datetime.now(timezone.utc)
-        payload = {
-            "sub": str(user.id),
-            "email": str(user.email),
-            "role": str(user.role),
-            "iat": int(now.timestamp()),
-            "exp": int((now + timedelta(hours=self._expire_hours)).timestamp()),
-        }
-        return jwt.encode(payload, self._secret, algorithm=self._algorithm)
-
-    def verify_token(self, token: str) -> dict[str, Any]:
-        """JWT 검증 후 payload 반환."""
-        try:
-            payload = jwt.decode(token, self._secret, algorithms=[self._algorithm])
-            if not isinstance(payload, dict):
-                raise HTTPException(status_code=401, detail="Invalid token payload")
-            return payload
-        except JWTError as e:
-            raise HTTPException(status_code=401, detail="Invalid token") from e
-
-
-
 
     async def signup(
         self,

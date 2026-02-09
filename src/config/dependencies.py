@@ -315,10 +315,7 @@ class ServiceContainer:
         override = self._get_override("auth_service")
         if override is not None:
             return override
-        return AuthService(
-            secret=self._settings.app.jwt_secret,
-            expire_hours=self._settings.app.jwt_expire_hours,
-        )
+        return AuthService()
 
     @cached_property
     def chatbot_service(self) -> IChatbotService:
