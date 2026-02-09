@@ -151,6 +151,72 @@ export function fetchProducts() {
     return request<{ products: string[] }>('/products/');
 }
 
+export type CTRRankerRun = {
+    id: string;
+    product_name: string;
+    report_date: string; // ISO date
+    mode: string;
+    created_at?: string | null;
+    metrics?: Record<string, { before: number; after: number }>;
+};
+
+export type CTRRankerCandidate = {
+    id: number;
+    title: string;
+    video_id?: string | null;
+    thumbnail_url?: string | null;
+    baseline_rank?: number | null;
+    baseline_score?: number | null;
+    after_rank?: number | null;
+    after_score?: number | null;
+    proxy_score?: number | null;
+};
+
+export type CTRRankerCandidatesResponse = {
+    summary: {
+        top1_changed: boolean;
+        entered_count: number;
+        dropped_count: number;
+        entered_titles: string[];
+        dropped_titles: string[];
+        top1_before_title?: string | null;
+        top1_after_title?: string | null;
+    };
+    approved_candidate_id?: number | null;
+    candidates: CTRRankerCandidate[];
+};
+
+export function adminImportCtrRankerRun(payload: { product_name: string; report_date: string }) {
+    return request<{ run_id: string; candidate_count: number }>('/admin/ctr-ranker/runs/import', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+}
+
+export function adminListCtrRankerRuns(productName: string) {
+    return request<{ runs: CTRRankerRun[] }>(`/admin/ctr-ranker/runs?product_name=${encodeURIComponent(productName)}`);
+}
+
+export function adminListCtrRankerCandidates(runId: string) {
+    return request<CTRRankerCandidatesResponse>(`/admin/ctr-ranker/runs/${encodeURIComponent(runId)}/candidates`);
+}
+
+export function adminApproveCtrRankerCandidate(runId: string, payload: { candidate_id: number; note?: string }) {
+    return request<{
+        approval: {
+            id: number;
+            run_id: string;
+            candidate_id: number;
+            approved_by_user_id?: number | null;
+            note?: string | null;
+            approved_at?: string | null;
+        };
+    }>(`/admin/ctr-ranker/runs/${encodeURIComponent(runId)}/approve`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+}
+
 export function fetchMe() {
     return request<{
         email: Email;
@@ -508,6 +574,33 @@ export function predictCtr(payload: {
     return request<{ prediction: Record<string, unknown> }>('/pipeline/analysis/ctr-predict', {
         method: 'POST',
         body: JSON.stringify(payload),
+    });
+}
+
+export function selectPipelineOutput(payload: {
+    task_id: TaskId;
+    kind: 'thumbnail' | 'video';
+    url: string;
+    meta?: Record<string, unknown>;
+}) {
+    return request<{ selected_outputs: Record<string, unknown> }>(`/pipeline/result/${payload.task_id}/select-output`, {
+        method: 'POST',
+        body: JSON.stringify({
+            kind: payload.kind,
+            url: payload.url,
+            meta: payload.meta || {},
+        }),
+    });
+}
+
+export function generateVideoFromSelectedThumbnail(taskId: TaskId) {
+    return request<{
+        video_url: string;
+        gcs_path?: GcsPath;
+        selected_outputs?: Record<string, unknown>;
+        source?: string;
+    }>(`/pipeline/result/${taskId}/generate-video-from-selected-thumbnail`, {
+        method: 'POST',
     });
 }
 

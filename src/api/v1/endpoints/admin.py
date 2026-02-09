@@ -4,20 +4,21 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from src.api.deps import CurrentUser, get_scheduler_client, require_role
-from src.config.dependencies import get_services
-from src.core.audit import record_audit_log
-from src.core.exceptions import (
+from api.deps import CurrentUser, get_scheduler_client, require_role
+from config.dependencies import get_services
+from core.audit import record_audit_log
+from core.exceptions import (
     ScheduleConflictError,
     ScheduleNotFoundError,
     SchedulerError,
 )
-from src.infrastructure.clients.scheduler_client import CloudSchedulerClient
-from src.infrastructure.database.connection import get_db_session
-from src.infrastructure.database.models import PipelineSchedule
-from src.schemas.requests import RoleCreateRequest, ScheduleRequest, TeamCreateRequest
-from src.schemas.responses import ScheduleResponse
-from src.services.scheduler_service import SchedulerService
+from infrastructure.clients.scheduler_client import CloudSchedulerClient
+from infrastructure.database.connection import get_db_session
+from infrastructure.database.models import PipelineSchedule
+from schemas.requests import RoleCreateRequest, ScheduleRequest, TeamCreateRequest
+from schemas.responses import ScheduleResponse
+from services.admin_service import AdminService
+from services.scheduler_service import SchedulerService
 
 
 class ToggleRequest(BaseModel):
@@ -49,8 +50,8 @@ class CompareModelsRequest(BaseModel):
     actuals: list[float]
 
 
-from src.utils.cache import clear_all_api_cache, get_cache_stats
-from src.utils.logger import log_feature_end, log_feature_fail, log_feature_start
+from utils.cache import clear_all_api_cache, get_cache_stats
+from utils.logger import log_feature_end, log_feature_fail, log_feature_start
 
 router = APIRouter()
 
@@ -83,7 +84,7 @@ async def evaluate_model_predictions(
             status_code=400,
             detail="predictions와 actuals 길이가 같아야 합니다.",
         )
-    from src.services.model_evaluator import ModelEvaluator
+    from services.model_evaluator import ModelEvaluator
 
     evaluator = ModelEvaluator()
     result = evaluator.evaluate_predictions(request.predictions, request.actuals)
@@ -98,7 +99,7 @@ async def evaluate_model_ranking(
 ):
     """예측 순위와 이상 순위로 NDCG@K 계산."""
     log_feature_start("admin_evaluate_model", "ranking")
-    from src.services.model_evaluator import ModelEvaluator
+    from services.model_evaluator import ModelEvaluator
 
     evaluator = ModelEvaluator()
     result = evaluator.evaluate_ranking(
@@ -127,7 +128,7 @@ async def evaluate_model_compare(
             status_code=400,
             detail="모든 예측 리스트는 actuals와 길이가 같아야 합니다.",
         )
-    from src.services.model_evaluator import ModelEvaluator
+    from services.model_evaluator import ModelEvaluator
 
     evaluator = ModelEvaluator()
     result = evaluator.compare_models(
@@ -139,12 +140,6 @@ async def evaluate_model_compare(
     )
     log_feature_end("admin_evaluate_model")
     return result
-
-
-from src.services.admin_service import AdminService
-
-# ... (Previous imports kept if needed, removing unused)
-# Removing Models import for Role, Team, AuditLog direct usage
 
 
 # Dependency

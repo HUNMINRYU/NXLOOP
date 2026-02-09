@@ -120,6 +120,17 @@ class ApprovalStatusRequest(BaseModel):
     status: str = Field(..., description="approval status")
 
 
+class PipelineSelectOutputRequest(BaseModel):
+    """Create 단계 산출물 중 1개를 채택(선택)하기 위한 요청.
+
+    승인(approval_status)과는 별개로, "대표 크리에이티브 1개"를 고정하기 위한 목적입니다.
+    """
+
+    kind: Literal["thumbnail", "video"] = Field(..., description="선택 대상 타입")
+    url: str = Field(..., min_length=1, description="선택한 산출물 URL")
+    meta: dict | None = Field(default=None, description="hook_text/style/점수 등 부가 정보")
+
+
 class RoleCreateRequest(BaseModel):
     name: str
     description: str | None = None

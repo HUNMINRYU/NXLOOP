@@ -286,6 +286,10 @@ class PipelineResult(BaseModel):
     pipeline_metrics: PipelineMetrics | None = Field(
         default=None, description="파이프라인 성능 메트릭"
     )
+    selected_outputs: dict[str, Any] | None = Field(
+        default=None,
+        description="Create 단계에서 사람이 채택한 대표 산출물(썸네일/비디오 등)",
+    )
     ai_stages_used: list[str] = Field(
         default_factory=list,
         description="사용한 AI 단계 (embedding, hydration, scorer 등)",

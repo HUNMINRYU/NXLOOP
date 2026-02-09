@@ -36,10 +36,22 @@ __all__ = ["PromptRegistry", "PromptTemplate", "prompt_registry"]
 # NOTE: circular import를 피하기 위해 prompt_registry 정의 이후에 import합니다.
 from . import (  # noqa: E402
     chatbot_prompts as _chatbot_prompts,
+)
+from . import (
     ctr_prediction_prompts as _ctr_prediction_prompts,
+)
+from . import (
     hydration_prompts as _hydration_prompts,
+)
+from . import (
     marketing_prompts as _marketing_prompts,
+)
+from . import (
     pipeline_prompts as _pipeline_prompts,
+)
+from . import (
     social_media_prompts as _social_media_prompts,
+)
+from . import (
     studio_prompts as _studio_prompts,
 )

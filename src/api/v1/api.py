@@ -4,19 +4,21 @@ from api.v1.endpoints import (
     admin,
     auth,
     content,
+    ctr_ranker,
     insights,
     misc,
     pipeline,
     products,
+    stripe,
     studio,
     webhooks,
-    stripe,
 )
 
 api_router = APIRouter()
 
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
+api_router.include_router(ctr_ranker.router, prefix="/admin", tags=["admin"])
 api_router.include_router(products.router, prefix="/products", tags=["products"])
 api_router.include_router(
     content.router, tags=["content"]

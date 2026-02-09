@@ -24,11 +24,11 @@ def admin_user():
 
 @pytest.fixture
 def client_admin(admin_user):
-    """TestClient with get_current_user overridden to admin"""
-    with patch("src.infrastructure.database.connection.init_db", new_callable=AsyncMock):
-        from src.app import app
-        from src.api.deps import get_current_user
-        from src.infrastructure.database.connection import get_db_session
+    """TestClient with get_current_user overridden to admin (auth 테스트와 동일하게 deps 사용처 기준 패치)."""
+    with patch("infrastructure.database.connection.init_db", new_callable=AsyncMock):
+        from app import app
+        from api.deps import get_current_user
+        from infrastructure.database.connection import get_db_session
 
         mock_db = AsyncMock()
 

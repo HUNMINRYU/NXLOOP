@@ -12,6 +12,7 @@ Two-Tower 아키텍처:
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import numpy as np
 
@@ -57,7 +58,7 @@ def _cosine_similarity(v1: np.ndarray, v2: np.ndarray) -> float:
 class CTRPredictor:
     """AI 기반 CTR 예측 서비스 (Two-Tower 하이브리드)"""
 
-    def __init__(self, gemini_client=None) -> None:
+    def __init__(self, gemini_client: Any | None = None) -> None:
         """
         Args:
             gemini_client: Gemini 클라이언트 (임베딩 + 텍스트 생성)
@@ -73,7 +74,7 @@ class CTRPredictor:
         thumbnail_description: str = "",
         competitor_titles: list[str] | None = None,
         category: str = "general",
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         제목과 썸네일 조합의 예상 CTR 계산 (Two-Tower 하이브리드)
 
@@ -93,41 +94,16 @@ class CTRPredictor:
         """
         log_step("CTR 예측", "시작", f"제목: {title[:30]}...")
 
-        scores = {}
-
-        # ── Rule-based Tower (휴리스틱) ───────────────────
-        # 1. 제목 길이 점수
-        scores["title_length"] = self._score_title_length(title)
-
-        # 2. 이모지 사용 점수
-        scores["emoji_usage"] = self._score_emoji_usage(title)
-
-        # 3. 후킹 강도 점수
-        scores["hook_strength"] = self._score_hook_strength(title)
-
-        # 4. 썸네일 요소 점수 (설명 기반 추정)
-        scores["thumbnail"] = self._score_thumbnail(thumbnail_description)
-
-        # 5. 경쟁사 대비 차별화 점수
-        scores["differentiation"] = self._score_differentiation(
-            title, competitor_titles or []
+        features = self.extract_features(
+            title=title,
+            thumbnail_description=thumbnail_description,
+            competitor_titles=competitor_titles or [],
         )
+        scores: dict[str, Any] = dict(features["breakdown"])
 
-        rule_score = (
-            scores["title_length"] * 0.15
-            + scores["emoji_usage"] * 0.10
-            + scores["hook_strength"] * 0.25
-            + scores["thumbnail"] * 0.30
-            + scores["differentiation"] * 0.20
-        )
-
-        # ── Embedding Tower (Two-Tower 유사도) ────────────
-        embedding_score = self._compute_embedding_score(title)
-        scores["embedding_similarity"] = round(embedding_score, 1)
-
-        # ── 하이브리드 결합 ───────────────────────────────
-        # Rule Tower 60% + Embedding Tower 40%
-        total_score = rule_score * 0.6 + embedding_score * 0.4
+        rule_score = float(features["rule_tower_score"])
+        embedding_score = float(features["embedding_tower_score"])
+        total_score = float(features["total_score"])
 
         # CTR 범위로 변환 (2% ~ 15%)
         predicted_ctr = 2 + (total_score / 100) * 13
@@ -150,6 +126,49 @@ class CTRPredictor:
             output=result,
         )
         return result
+
+    def extract_features(
+        self,
+        *,
+        title: str,
+        thumbnail_description: str = "",
+        competitor_titles: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """
+        CTRPredictor의 내부 휴리스틱/임베딩을 “학습용 피처”로 재사용하기 위한 API.
+
+        반환값에는 breakdown(개별 피처 점수) + 집계(rule/embedding/total score)를 포함한다.
+        """
+        competitor_titles = competitor_titles or []
+
+        breakdown: dict[str, float] = {}
+        breakdown["title_length"] = float(self._score_title_length(title))
+        breakdown["emoji_usage"] = float(self._score_emoji_usage(title))
+        breakdown["hook_strength"] = float(self._score_hook_strength(title))
+        breakdown["thumbnail"] = float(self._score_thumbnail(thumbnail_description))
+        breakdown["differentiation"] = float(
+            self._score_differentiation(title, competitor_titles)
+        )
+
+        rule_score = (
+            breakdown["title_length"] * 0.15
+            + breakdown["emoji_usage"] * 0.10
+            + breakdown["hook_strength"] * 0.25
+            + breakdown["thumbnail"] * 0.30
+            + breakdown["differentiation"] * 0.20
+        )
+
+        embedding_score = float(self._compute_embedding_score(title))
+        breakdown["embedding_similarity"] = float(round(embedding_score, 1))
+
+        total_score = rule_score * 0.6 + embedding_score * 0.4
+
+        return {
+            "breakdown": breakdown,
+            "rule_tower_score": float(round(rule_score, 6)),
+            "embedding_tower_score": float(round(embedding_score, 6)),
+            "total_score": float(round(total_score, 6)),
+        }
 
     # ── Two-Tower Embedding 메서드 ────────────────────────
 
@@ -343,9 +362,9 @@ class CTRPredictor:
         else:
             return "D"
 
-    def _generate_recommendations(self, scores: dict) -> list[str]:
+    def _generate_recommendations(self, scores: dict[str, Any]) -> list[str]:
         """개선 권장사항 생성"""
-        recommendations = []
+        recommendations: list[str] = []
 
         if scores.get("title_length", 100) < 70:
             recommendations.append("📏 제목 길이를 30-60자 사이로 조정하세요")
@@ -373,9 +392,9 @@ class CTRPredictor:
         self,
         title: str,
         thumbnail_description: str = "",
-        pipeline_insights: list[dict] | None = None,
+        pipeline_insights: list[dict[str, Any]] | None = None,
         category: str = "general",
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         파이프라인 결과(top insights)를 CTR 예측에 반영.
         adjusted_ctr = base_ctr * (1 + sum(weight_i * signal_i))
@@ -396,9 +415,9 @@ class CTRPredictor:
         }
 
         adjustment = 0.0
-        signal_details = {}
+        signal_details: dict[str, float] = {}
         for insight in pipeline_insights:
-            features = insight.get("features", {})
+            features: dict[str, Any] = dict(insight.get("features", {}) or {})
             for signal_name, weight in signal_weights.items():
                 value = features.get(signal_name, 0.0)
                 if value > 0:
@@ -418,7 +437,7 @@ class CTRPredictor:
 
         return basic
 
-    def compare_variations(self, variations: list[dict]) -> list[dict]:
+    def compare_variations(self, variations: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         여러 버전의 제목/썸네일 비교
 
@@ -428,7 +447,7 @@ class CTRPredictor:
         Returns:
             예측 결과 + 순위 리스트
         """
-        results = []
+        results: list[dict[str, Any]] = []
 
         for i, var in enumerate(variations):
             prediction = self.predict_ctr(
@@ -452,8 +471,8 @@ class CTRPredictor:
         self,
         title: str,
         category: str = "general",
-        top_insights: list[dict] | None = None,
-    ) -> dict:
+        top_insights: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """
         AI를 활용한 심층 CTR 예측
 

@@ -84,6 +84,7 @@ scripts/
 frontend/dist/
 frontend/.next-e2e/
 frontend/help_output.txt
+cloud-sql-proxy
 nu_
 *.txt
 

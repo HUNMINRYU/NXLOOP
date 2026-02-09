@@ -17,7 +17,13 @@ from core.models.chatbot import ChatSession
 from core.prompts import (
     prompt_registry,
 )
-from utils.logger import log_error, log_info, log_llm_fail, log_llm_request, log_llm_response
+from utils.logger import (
+    log_error,
+    log_info,
+    log_llm_fail,
+    log_llm_request,
+    log_llm_response,
+)
 
 # 인사·간단 문구 즉시 응답 (챗봇 응답 속도 개선)
 GREETING_PATTERNS = (
@@ -186,9 +192,9 @@ class ChatbotService:
             )
             sources = self._sanitize_sources(rag_results)
             use_grounding = not rag_results
-        
+
         product = self._detect_product(text)
-        
+
         prompt = self._build_prompt(
             message=text,
             session=session,
@@ -207,7 +213,7 @@ class ChatbotService:
                 temperature=0.4,
                 use_grounding=use_grounding,
             )
-            
+
             log_llm_response("챗봇 응답", f"응답 {len(raw_response or '')}자")
         except Exception as e:
             log_llm_fail("챗봇 응답", str(e))
@@ -452,7 +458,7 @@ class ChatbotService:
         history_lines = "\n".join(
             f"- {msg.role}: {msg.content}" for msg in recent_messages
         )
-        
+
         prompt = prompt_registry.get("chatbot.query_gen").render(
             history_lines=history_lines,
             message=current_message,
@@ -523,7 +529,7 @@ class ChatbotService:
         if search_query:
             # 2. 문서 검색
             yield f"data: {json.dumps({'step': 'searching', 'message': f'🔍 검색: {search_query}'}, ensure_ascii=False)}\n\n"
-            
+
             rag_results = await self._rag_client.search(
                 search_query,
                 max_results=5,
@@ -559,11 +565,11 @@ class ChatbotService:
                 if chunk:
                     full_response.append(chunk)
                     yield f"data: {json.dumps({'token': chunk}, ensure_ascii=False)}\n\n"
-            
+
             # 4. 완료 처리
             full_text = "".join(full_response)
             log_llm_response("챗봇 스트리밍", f"응답 {len(full_text)}자")
-            
+
             parsed = self._parse_json_output(full_text)
             answer = parsed.get("answer")
             if not isinstance(answer, str) or not answer.strip():

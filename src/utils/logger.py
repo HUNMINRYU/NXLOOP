@@ -6,19 +6,20 @@ import contextlib
 import logging
 import sys
 from collections.abc import Callable
+from typing import ClassVar
 
 
 class ColoredFormatter(logging.Formatter):
     """Optional ANSI color formatter (ASCII-only output)."""
 
-    COLORS = {
+    COLORS: ClassVar[dict[str, str]] = {
         "DEBUG": "\033[36m",  # Cyan
         "INFO": "\033[32m",  # Green
         "WARNING": "\033[33m",  # Yellow
         "ERROR": "\033[31m",  # Red
         "CRITICAL": "\033[35m",  # Magenta
     }
-    RESET = "\033[0m"
+    RESET: ClassVar[str] = "\033[0m"
 
     def format(self, record: logging.LogRecord) -> str:
         color = self.COLORS.get(record.levelname, "")
@@ -320,7 +321,7 @@ def log_stage_start(stage_name: str, description: str = "") -> None:
     get_logger().info("=" * 50)
     get_logger().info(f"🚀 [{stage_name}] 시작")
     if description:
-        get_logger().info(f"   ℹ️  {description}")
+        get_logger().info(f"   [i] {description}")
 
 
 def log_stage_end(

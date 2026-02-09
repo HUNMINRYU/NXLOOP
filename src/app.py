@@ -8,8 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from api.v1.api import api_router
 from api.middleware.csrf import csrf_protect
+from api.v1.api import api_router
 from config.cors import resolve_cors_origins
 from config.settings import get_settings
 from infrastructure.database.connection import init_db
