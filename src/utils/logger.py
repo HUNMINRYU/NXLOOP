@@ -114,11 +114,16 @@ def _has_closed_stream_handler(logger: logging.Logger) -> bool:
 
 def get_logger(name: str = "nexloop") -> logging.Logger:
     global _app_logger
+    # 항상 "nexloop"라는 이름의 메인 로거를 사용하도록 고정하여
+    # 여러 모듈에서 로그 설정이 분산되는 것을 방지합니다.
+    main_name = "nexloop"
     if _app_logger is None:
-        _app_logger = setup_logger(name)
-        return _app_logger
+        _app_logger = setup_logger(main_name)
+
+    # 핸들러가 없거나 스트림이 닫힌 경우 재설정
     if not _app_logger.handlers or _has_closed_stream_handler(_app_logger):
-        _app_logger = setup_logger(name)
+        _app_logger = setup_logger(main_name)
+
     return _app_logger
 
 
@@ -175,20 +180,21 @@ def log_feature_fail(feature: str, error: str = "") -> None:
     get_logger().error(msg, extra={"feature": feature, "event": "fail"})
 
 
-def log_info(message: str) -> None:
-    get_logger().info(message)
+def log_info(message: str, *args: object, **kwargs: object) -> None:
+    # logging 모듈 스타일("msg %s", arg) 호출을 지원해야 운영 로그가 깨지지 않는다.
+    get_logger().info(message, *args, **kwargs)
 
 
-def log_debug(message: str) -> None:
-    get_logger().debug(message)
+def log_debug(message: str, *args: object, **kwargs: object) -> None:
+    get_logger().debug(message, *args, **kwargs)
 
 
-def log_warning(message: str) -> None:
-    get_logger().warning(message)
+def log_warning(message: str, *args: object, **kwargs: object) -> None:
+    get_logger().warning(message, *args, **kwargs)
 
 
-def log_error(message: str) -> None:
-    get_logger().error(message)
+def log_error(message: str, *args: object, **kwargs: object) -> None:
+    get_logger().error(message, *args, **kwargs)
 
 
 def log_success(message: str) -> None:

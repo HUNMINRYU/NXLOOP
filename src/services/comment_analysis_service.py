@@ -3,6 +3,8 @@
 YouTube 댓글에서 마케팅 인사이트 추출
 """
 
+from __future__ import annotations
+
 import re
 from collections import Counter
 

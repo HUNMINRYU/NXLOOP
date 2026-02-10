@@ -43,17 +43,17 @@ def _wait_http_ok(
                 f"Next dev 서버 프로세스가 조기 종료되었습니다. url={url}, exit_code={proc.returncode}{log_tail}"
             )
         try:
-            with urllib.request.urlopen(url, timeout=2.0) as res:  # noqa: S310
+            with urllib.request.urlopen(url, timeout=2.0) as res:
                 if 200 <= res.status < 300:
                     return
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             last_err = e
             time.sleep(0.4)
     raise AssertionError(f"서버 준비 대기 timeout: {url} (last_err={last_err})")
 
 
 def _fetch_text(url: str) -> str:
-    with urllib.request.urlopen(url, timeout=10.0) as res:  # noqa: S310
+    with urllib.request.urlopen(url, timeout=10.0) as res:
         raw = res.read()
     return raw.decode("utf-8", errors="replace")
 
@@ -84,7 +84,7 @@ def test_pricing_page_smoke_renders_and_has_upgrade_links() -> None:
 
         log_path = os.path.join(tmp, "next-dev.log")
         with open(log_path, "wb") as log_fp:
-            proc = subprocess.Popen(  # noqa: S603
+            proc = subprocess.Popen(
                 # hostname을 강제로 127.0.0.1로 맞춰, /pricing health check가 흔들리지 않게 한다.
                 ["npm", "run", "dev", "--", "-p", str(port), "--hostname", "127.0.0.1"],
                 cwd="frontend",

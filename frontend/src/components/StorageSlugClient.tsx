@@ -141,9 +141,12 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
 
     const videoUrls = useMemo(() => {
         if (slug !== 'video-vault') return [];
-        return paginatedTasks
+        const urls = paginatedTasks
             .map((task) => results[String(task.task_id)]?.result?.generated_content?.video_url)
             .filter((url): url is string => Boolean(url));
+
+        // 중복 URL이 반환될 수 있어(백엔드/히스토리 중복 등) UI 렌더 단계에서 방어합니다.
+        return Array.from(new Set(urls));
     }, [results, slug, paginatedTasks]);
 
     const thumbnailUrls = useMemo(() => {
@@ -159,7 +162,9 @@ export default function StorageSlugClient({ slug }: StorageSlugClientProps) {
                 });
             }
         });
-        return items;
+
+        // 단일 thumbnail_url과 multi_thumbnails가 같은 URL을 포함하는 경우가 많아서 중복 제거합니다.
+        return Array.from(new Set(items));
     }, [results, slug, paginatedTasks]);
 
     useEffect(() => {

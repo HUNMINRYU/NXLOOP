@@ -1,4 +1,3 @@
-import pytest
 
 from services.data_validator import validate_comments
 
@@ -19,5 +18,5 @@ def test_spam_comment_rejected():
 
 def test_empty_text_rejected():
     comments = [{"author": "user", "text": "", "likes": 5}]
-    valid, report = validate_comments(comments)
+    valid, _report = validate_comments(comments)
     assert len(valid) == 0

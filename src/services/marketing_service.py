@@ -11,8 +11,10 @@ from core.interfaces.ai_service import IMarketingAIService
 from core.models import CollectedData
 from utils.logger import (
     log_api_end,
-    log_api_start,
     log_error,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
     log_step,
     log_success,
 )
@@ -35,12 +37,12 @@ class MarketingService:
         use_grounding: bool = True,
     ) -> dict[str, Any]:
         """마케팅 데이터 분석"""
+        log_feature_start("marketing_analyze", product_name)
         log_step(
             "마케팅 데이터 분석",
             "시작",
             f"제품: {product_name}, Grounding: {use_grounding}",
         )
-        log_api_start("Gemini Analysis", f"Product: {product_name}")
 
         try:
             result = self._client.analyze_marketing_data(
@@ -58,11 +60,14 @@ class MarketingService:
 
             log_api_end("Gemini Analysis")
             log_success("마케팅 데이터 분석 완료")
+            log_feature_end("marketing_analyze")
             return result
 
-        except StrategyGenerationError:
+        except StrategyGenerationError as e:
+            log_feature_fail("marketing_analyze", str(e))
             raise
         except Exception as e:
+            log_feature_fail("marketing_analyze", str(e))
             log_error(f"마케팅 데이터 분석 실패: {e}")
             raise StrategyGenerationError(
                 f"마케팅 데이터 분석 실패: {e}",
@@ -76,8 +81,8 @@ class MarketingService:
         progress_callback: Callable[[str, int], None] | None = None,
     ) -> dict[str, Any]:
         """마케팅 전략 생성"""
+        log_feature_start("marketing_generate_strategy", product.get("name", "N/A"))
         log_step("마케팅 전략 수립", "시작")
-        log_api_start("Gemini Strategy Generation")
 
         try:
             result = self._client.generate_marketing_strategy(
@@ -96,11 +101,14 @@ class MarketingService:
 
             log_api_end("Gemini Strategy Generation")
             log_success("마케팅 전략 생성 완료")
+            log_feature_end("marketing_generate_strategy")
             return result
 
-        except StrategyGenerationError:
+        except StrategyGenerationError as e:
+            log_feature_fail("marketing_generate_strategy", str(e))
             raise
         except Exception as e:
+            log_feature_fail("marketing_generate_strategy", str(e))
             log_error(f"마케팅 전략 생성 실패: {e}")
             raise StrategyGenerationError(
                 f"마케팅 전략 생성 실패: {e}",
@@ -114,11 +122,14 @@ class MarketingService:
         count: int = 5,
     ) -> list[dict]:
         """훅 텍스트 생성"""
-        return self._client.generate_hook_texts(
+        log_feature_start("marketing_generate_hooks", product_name)
+        res = self._client.generate_hook_texts(
             product_name=product_name,
             hook_types=hook_types,
             count=count,
         )
+        log_feature_end("marketing_generate_hooks", extra_detail=f"count={len(res)}")
+        return res
 
     def extract_key_insights(self, strategy: dict) -> dict:
         """전략에서 핵심 인사이트 추출"""

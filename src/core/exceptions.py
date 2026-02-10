@@ -152,10 +152,18 @@ class APIError(NexloopError):
         self, service_name: str, original_error: Exception | None = None, **kwargs
     ):
         self.service_name = service_name
+        # NOTE:
+        # 외부 API 호출 실패는 대부분 일시적 네트워크/서버 이슈로 재시도가 유효하다.
+        # 명시적으로 severity를 주지 않으면 NexloopError 기본값(PERMANENT)로 고정되어
+        # retry_on_error가 재시도하지 못하는 문제가 생긴다.
+        severity = kwargs.pop("severity", ErrorSeverity.RETRYABLE_TRANSIENT)
+        retry_after = kwargs.pop("retry_after", None)
         super().__init__(
             code=kwargs.get("code", ErrorCode.API_RESPONSE_ERROR),
             original_error=original_error,
             details={"service": service_name, **kwargs.get("details", {})},
+            severity=severity,
+            retry_after=retry_after,
         )
 
 

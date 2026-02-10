@@ -134,7 +134,7 @@ export default function usePipeline() {
     if (typeof EventSource !== 'undefined') {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
-        eventSource = new EventSource(`${baseUrl}/pipeline/status-stream/${taskId}`);
+        eventSource = new EventSource(`${baseUrl}/api/v1/pipeline/status-stream/${taskId}`);
         eventSource.onmessage = async (event) => {
           if (!isActive) return;
           const streamStatus = JSON.parse(event.data) as PipelineStatus;

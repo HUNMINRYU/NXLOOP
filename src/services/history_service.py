@@ -13,7 +13,12 @@ from core.models.pipeline import (
     PipelineResult,
 )
 from utils.file_store import ensure_output_dir, safe_unlink
-from utils.logger import get_logger
+from utils.logger import (
+    get_logger,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
+)
 
 logger = get_logger(__name__)
 
@@ -97,13 +102,18 @@ class HistoryService:
     def delete_history(self, history_id: str) -> bool:
         """히스토리 삭제 (메타데이터 파일만 삭제)"""
         try:
+            log_feature_start("history_delete", history_id)
             meta_dir = ensure_output_dir(self._base_dir) / "metadata"
             file_path = meta_dir / f"{history_id}.json"
 
             if file_path.exists():
-                return safe_unlink(file_path)
+                res = safe_unlink(file_path)
+                log_feature_end("history_delete", extra_detail=f"success={res}")
+                return res
+            log_feature_fail("history_delete", "file_not_found")
             return False
         except Exception as e:
+            log_feature_fail("history_delete", str(e))
             logger.error(f"히스토리 삭제 실패 ({history_id}): {e}")
             return False
 
@@ -128,8 +138,12 @@ class HistoryService:
             if isinstance(data.get("executed_at"), datetime):
                 data["executed_at"] = data["executed_at"].isoformat()
 
+            log_feature_start("history_save", result.product_name)
             from utils.file_store import save_metadata
-            return save_metadata(data, self._base_dir)
+            res_id = save_metadata(data, self._base_dir)
+            log_feature_end("history_save", extra_detail=f"id={res_id}")
+            return res_id
         except Exception as e:
+            log_feature_fail("history_save", str(e))
             logger.error(f"결과 저장 실패: {e}")
             return ""

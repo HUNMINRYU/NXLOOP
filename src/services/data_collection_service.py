@@ -12,7 +12,14 @@ from services.market_trend_service import MarketTrendService
 from services.naver_service import NaverService
 from services.pipeline.orchestrator import PipelineOrchestrator
 from services.youtube_service import YouTubeService
-from utils.logger import get_logger, log_error, log_info, log_step
+from utils.logger import (
+    get_logger,
+    log_error,
+    log_feature_end,
+    log_feature_start,
+    log_info,
+    log_step,
+)
 
 logger = get_logger(__name__)
 
@@ -71,6 +78,7 @@ class DataCollectionService:
         X-Algorithm(오케스트레이터) 분석은 async로 그대로 await 합니다.
         """
         p_name = product.get("name", "N/A")
+        log_feature_start("data_collect_all", p_name)
         log_step("데이터 수집", "시작", f"제품: {p_name}")
 
         collected_data = CollectedData()
@@ -101,7 +109,9 @@ class DataCollectionService:
         if self._market_trend:
             if progress_callback:
                 progress_callback(PipelineStep.DATA_COLLECTION, "시장 동향 수집 중...")
-            collected_data.market_trends = self._market_trend.get_market_trends(product)
+            collected_data.market_trends = await self._market_trend.get_market_trends_async(
+                product
+            )
 
         # YouTube 비디오 목록 저장
         if youtube_data and "videos" in youtube_data:
@@ -149,6 +159,27 @@ class DataCollectionService:
                 f"X-Algorithm 댓글 샘플링: {len(limited_comments)}/{len(unique_comments)}"
             )
 
+            if not limited_comments:
+                # YouTube 수집 실패/댓글 비활성화/네트워크 이슈 등으로 댓글이 없을 수 있다.
+                # 이 경우 X-Algorithm을 실행해도 의미 있는 결과가 나오지 않으므로 명시적으로 스킵한다.
+                log_info("X-Algorithm 스킵: 분석할 댓글이 없습니다.")
+                collected_data.top_insights = []
+                collected_data.pipeline_metrics = PipelineMetrics(
+                    original_count=0,
+                    processed_count=0,
+                    result_count=0,
+                    selection_rate=0.0,
+                    stage_timings={},
+                    stage_counts={},
+                    total_filtered=0,
+                    filtering_rate=0.0,
+                    throughput_per_sec=0.0,
+                )
+                if progress_callback:
+                    progress_callback(PipelineStep.DATA_COLLECTION, "데이터 수집 완료")
+                log_feature_end("data_collect_all")
+                return collected_data
+
             validated, quality_report = validate_comments(limited_comments)
             collected_data.quality_report = quality_report.model_dump()
             log_info(
@@ -160,12 +191,35 @@ class DataCollectionService:
             analysis_result = await self._orchestrator.run_pipeline(validated_payload)
             collected_data.top_insights = analysis_result.get("insights", [])
             stats = analysis_result.get("stats") or {}
+            original_count = int(stats.get("original_count") or 0)
+            processed_count = int(stats.get("processed_count") or 0)
+            result_count = int(stats.get("result_count") or len(collected_data.top_insights or []))
+            selection_rate = (
+                (result_count / original_count) if original_count > 0 else 0.0
+            )
             collected_data.pipeline_metrics = PipelineMetrics(
+                original_count=original_count,
+                processed_count=processed_count,
+                result_count=result_count,
+                selection_rate=selection_rate,
                 stage_timings=stats.get("stage_timings") or {},
                 stage_counts=stats.get("stage_counts") or {},
                 total_filtered=stats.get("total_filtered", 0),
                 filtering_rate=stats.get("filtering_rate", 0.0),
                 throughput_per_sec=stats.get("throughput_per_sec", 0.0),
+            )
+            # 운영에서 자주 혼동되는 지표를 한 줄로 고정 출력한다.
+            # - removed/removed_rate: pre/post filter로 "제거"된 건수/비율 (원본 대비)
+            # - selection_rate: top_k "선정" 비율 (원본 대비)
+            log_info(
+                "X-Algorithm 파이프라인 요약: original=%d processed=%d selected=%d "
+                "(removed=%d, removed_rate=%.1f%%, selection_rate=%.1f%%)",
+                original_count,
+                processed_count,
+                result_count,
+                int(stats.get("total_filtered") or 0),
+                float(stats.get("filtering_rate") or 0.0) * 100.0,
+                selection_rate * 100.0,
             )
             log_info(
                 f"X-Algorithm 분석 완료: {len(collected_data.top_insights)}개 인사이트 도출"
@@ -177,6 +231,7 @@ class DataCollectionService:
         if progress_callback:
             progress_callback(PipelineStep.DATA_COLLECTION, "데이터 수집 완료")
 
+        log_feature_end("data_collect_all")
         return collected_data
 
     # NOTE: 기존 `_run_async()` 구현은 sync 코드에서 async 코드를 억지로 실행하기 위한 보조였으나,
