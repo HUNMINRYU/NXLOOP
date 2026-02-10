@@ -14,7 +14,13 @@ from config.products import get_product_by_name
 from core.audit import record_audit_log
 from core.state import PIPELINE_RESULTS, PIPELINE_STATUS
 from infrastructure.database.connection import get_db_session
-from infrastructure.database.models import PipelineTask
+
+# NOTE: Streaming status payload은 다양한 객체(datetime 등)를 포함할 수 있어 안전 직렬화가 필요하다.
+# DB 모델(PipelineTask)의 dumps()를 사용할 수 있으면 사용하고, 그렇지 않으면 fallback 한다.
+try:
+    from infrastructure.database.models import PipelineTask as _PipelineTaskModel
+except Exception:  # pragma: no cover
+    _PipelineTaskModel = None
 from schemas.requests import (
     AnalysisTaskRequest,
     ApprovalStatusRequest,
@@ -32,6 +38,14 @@ from utils.log_throttle import should_log_throttled
 from utils.logger import log_feature_end, log_feature_fail, log_feature_start
 
 router = APIRouter()
+
+
+def _safe_json_dumps(payload: Any) -> str:
+    """SSE 전송용 payload를 안전하게 JSON 문자열로 직렬화한다."""
+
+    if _PipelineTaskModel is not None and hasattr(_PipelineTaskModel, "dumps"):
+        return _PipelineTaskModel.dumps(payload)
+    return json.dumps(payload, ensure_ascii=False, default=str)
 
 
 def _get_task_status_and_result(task_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -192,14 +206,12 @@ async def stream_pipeline_status(task_id: str):
                         "task_id": task_id,
                         "process_logs": [],
                     }
-                    # status payload에 datetime 등이 포함될 수 있어 안전 직렬화 사용
-                    yield f"data: {PipelineTask.dumps(fallback)}\n\n"
+                    yield f"data: {_safe_json_dumps(fallback)}\n\n"
                     await asyncio.sleep(1)
                     continue
                 yield "event: error\ndata: {}\n\n"
                 break
-            # status payload에 datetime 등이 포함될 수 있어 안전 직렬화 사용
-            yield f"data: {PipelineTask.dumps(status)}\n\n"
+            yield f"data: {_safe_json_dumps(status)}\n\n"
             if status.get("status") in {"success", "failed"}:
                 break
             await asyncio.sleep(1)

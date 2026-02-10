@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from api.v1.endpoints.pipeline import stream_pipeline_status
+import api.v1.endpoints.pipeline as pipeline_endpoint
 from core.state import PIPELINE_STATUS
 
 
@@ -29,7 +29,11 @@ async def test_status_stream_yields_json_without_nameerror():
     }
 
     try:
-        resp = await stream_pipeline_status(task_id)
+        # PipelineTask 모델이 임포트되지 못하는 배포/환경에서도 SSE가 깨지지 않아야 한다.
+        prev_model = getattr(pipeline_endpoint, "_PipelineTaskModel", None)
+        pipeline_endpoint._PipelineTaskModel = None
+
+        resp = await pipeline_endpoint.stream_pipeline_status(task_id)
         chunk = await anext(resp.body_iterator)
 
         # Starlette가 str을 bytes로 인코딩할 수 있으므로 양쪽 대응
@@ -45,5 +49,5 @@ async def test_status_stream_yields_json_without_nameerror():
         assert data["task_id"] == task_id
         assert data["status"] == "running"
     finally:
+        pipeline_endpoint._PipelineTaskModel = prev_model
         PIPELINE_STATUS.pop(task_id, None)
-
