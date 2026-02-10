@@ -17,6 +17,7 @@ from infrastructure.database.connection import AsyncSessionFactory
 from infrastructure.database.models import CTRFeedback, CTRRankerApproval, CTRRankerCandidate, CTRRankerRun, now_kst
 from infrastructure.services.notion_service import NotionService
 from services.ctr_predictor import CTRPredictor
+from services.ctr_ml_training import train_and_save as train_and_save_ml
 from services.model_eval_report_service import ModelEvalReportService
 from utils.logger import get_logger
 
@@ -402,6 +403,80 @@ def _render_md(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+async def train_and_save(
+    *,
+    source: str = "approvals",
+    out_dir: str | Path = "outputs/ctr_training/models",
+    limit_runs: int | None = None,
+    limit_feedback: int | None = None,
+) -> dict[str, Any]:
+    """
+    CTR 학습(실제 training) + 평가(교차검증) + 저장을 수행한다.
+
+    지원 소스:
+    - approvals: CTRRankerApproval/CTRRankerCandidate 기반 (GroupKFold 가능)
+    - feedback: CTRFeedback 기반. 기본은 `actual_ctr >= 5.0` 를 positive로 이진화한다.
+      (해당 임계값은 목적에 맞게 조정 필요)
+    """
+    if source not in {"approvals", "feedback"}:
+        raise ValueError("source must be one of: approvals, feedback")
+
+    predictor = CTRPredictor(gemini_client=None)
+
+    if source == "approvals":
+        rows = await _load_approval_dataset(limit_runs=limit_runs)
+        feature_rows: list[dict[str, float]] = []
+        labels: list[int] = []
+        groups: list[str] = []
+        for r in rows:
+            f = predictor.extract_features(
+                title=r.title,
+                thumbnail_description=r.thumbnail_description,
+                competitor_titles=r.competitor_titles,
+            )
+            feature_rows.append(_flatten_features(f))
+            labels.append(int(r.y_approved))
+            groups.append(str(r.run_id))
+
+        out_dir_p = Path(out_dir)
+        out_dir_p.mkdir(parents=True, exist_ok=True)
+        report_base = f"{_today_kst().isoformat()}-ctr-approvals-ml"
+        return train_and_save_ml(
+            feature_rows=feature_rows,
+            labels=labels,
+            groups=groups,
+            out_dir=out_dir_p,
+            report_basename=report_base,
+        )
+
+    feedback = await _load_regression_feedback(limit_rows=limit_feedback)
+    # feedback -> 이진 분류(고CTR/저CTR)로 변환
+    threshold = 5.0
+    feature_rows2: list[dict[str, float]] = []
+    labels2: list[int] = []
+    groups2: list[str] = []
+    for idx, r in enumerate(feedback):
+        f = predictor.extract_features(
+            title=str(r["title"]),
+            thumbnail_description=str(r.get("thumbnail_description") or ""),
+            competitor_titles=[],
+        )
+        feature_rows2.append(_flatten_features(f))
+        labels2.append(1 if float(r["actual_ctr"]) >= threshold else 0)
+        groups2.append(str(idx))
+
+    out_dir_p2 = Path(out_dir)
+    out_dir_p2.mkdir(parents=True, exist_ok=True)
+    report_base2 = f"{_today_kst().isoformat()}-ctr-feedback-ml"
+    return train_and_save_ml(
+        feature_rows=feature_rows2,
+        labels=labels2,
+        groups=groups2,
+        out_dir=out_dir_p2,
+        report_basename=report_base2,
+    )
+
+
 async def main_async(args: argparse.Namespace) -> int:
     rows = await _load_approval_dataset(limit_runs=args.limit_runs)
     feedback = await _load_regression_feedback(limit_rows=args.limit_feedback)
@@ -514,4 +589,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
