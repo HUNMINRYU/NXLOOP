@@ -92,7 +92,64 @@
 | **Backend** (Cloud Run) | 512Mi, 1CPU, min=1, max=100, cpu-boost | 콜드스타트 방지, timeout 300s |
 | **Frontend** (Cloud Run) | 256Mi, 1CPU, max=10 | Multi-Stage Docker 빌드 |
 | **DB 마이그레이션** | Cloud Run Job | 앱과 분리하여 경쟁 조건 방지 |
-| **CI/CD** | Cloud Build | `cloudbuild.backend.yaml`, `cloudbuild.frontend.yaml` |
+| **CI/CD** | Cloud Build (us-central1) | `main` push 시 자동 트리거 |
+
+### Git 브랜치 전략 (Git Flow)
+
+```
+main ──────────────────────────────────── 프로덕션 (배포용)
+  │                                         ▲
+  └── develop ──────────────────────────── 통합 브랜치
+        │         ▲        ▲
+        ├── feature/기능A ──┘        │
+        └── feature/기능B ───────────┘
+```
+
+| 브랜치 | 역할 | 배포 트리거 |
+|--------|------|:-----------:|
+| `main` | **프로덕션** — 가장 안정적인 상태 | ✅ Cloud Build 자동 배포 |
+| `develop` | **개발 통합** — 기능 브랜치 병합 대상 | — |
+| `feature/*` | **기능 개발** — develop에서 분기 | — |
+
+### CI/CD 파이프라인 (Cloud Build)
+
+`main` 브랜치에 push하면 **2개의 Cloud Build 트리거**가 자동 실행됩니다.
+
+```
+git push origin main
+        │
+        ▼
+┌─── Cloud Build Trigger (us-central1) ───────────────────────────┐
+│                                                                  │
+│  🔧 nexloop-backend-deploy-main                                 │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ Step 1: Docker Build (Dockerfile.backend)                │   │
+│  │ Step 2: Image Push → gcr.io/$PROJECT/nexloop-backend     │   │
+│  │ Step 3: Cloud Run Deploy (asia-northeast3)               │   │
+│  │         ├── Cloud SQL 연결 (nexloop-db)                   │   │
+│  │         ├── Secret Manager → 5개 시크릿 자동 주입         │   │
+│  │         │   (DATABASE_URL, GOOGLE_API_KEY, NAVER_*,      │   │
+│  │         │    NOTION_API_KEY)                              │   │
+│  │         └── min-instances=1 (콜드스타트 방지)             │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  🎨 nexloop-frontend-deploy-main                                │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ Step 1: Docker Build (Dockerfile.frontend)               │   │
+│  │         └── --build-arg NEXT_PUBLIC_API_URL=<backend_url>│   │
+│  │ Step 2: Image Push → gcr.io/$PROJECT/nexloop-frontend    │   │
+│  │ Step 3: Cloud Run Deploy (asia-northeast3)               │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+| 파일 | 대상 | 주요 설정 |
+|------|------|----------|
+| `cloudbuild.backend.yaml` | Backend | Cloud SQL 연결, Secret Manager 5개 시크릿, `min-instances=1` |
+| `cloudbuild.frontend.yaml` | Frontend | `NEXT_PUBLIC_API_URL` 빌드 인자 주입 |
+| `Dockerfile.backend` | Backend 이미지 | Python 3.11 slim, `requirements.txt` |
+| `Dockerfile.frontend` | Frontend 이미지 | Node 20 Alpine, Multi-Stage 빌드 |
 
 ---
 
