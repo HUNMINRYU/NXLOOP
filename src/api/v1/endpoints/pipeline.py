@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 from datetime import datetime
 from time import perf_counter
@@ -14,7 +15,13 @@ from config.products import get_product_by_name
 from core.audit import record_audit_log
 from core.state import PIPELINE_RESULTS, PIPELINE_STATUS
 from infrastructure.database.connection import get_db_session
-from infrastructure.database.models import PipelineTask
+
+# NOTE: Streaming status payload은 다양한 객체(datetime 등)를 포함할 수 있어 안전 직렬화가 필요하다.
+# DB 모델(PipelineTask)의 dumps()를 사용할 수 있으면 사용하고, 그렇지 않으면 fallback 한다.
+try:
+    from infrastructure.database.models import PipelineTask as _PipelineTaskModel
+except Exception:  # pragma: no cover
+    _PipelineTaskModel = None
 from schemas.requests import (
     AnalysisTaskRequest,
     ApprovalStatusRequest,
@@ -34,6 +41,14 @@ from utils.logger import log_feature_end, log_feature_fail, log_feature_start
 router = APIRouter()
 
 
+def _safe_json_dumps(payload: Any) -> str:
+    """SSE 전송용 payload를 안전하게 JSON 문자열로 직렬화한다."""
+
+    if _PipelineTaskModel is not None and hasattr(_PipelineTaskModel, "dumps"):
+        return _PipelineTaskModel.dumps(payload)
+    return json.dumps(payload, ensure_ascii=False, default=str)
+
+
 def _get_task_status_and_result(task_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
     status = PIPELINE_STATUS.get(task_id)
     result = PIPELINE_RESULTS.get(task_id)
@@ -47,6 +62,27 @@ def _get_task_status_and_result(task_id: str) -> tuple[dict[str, Any], dict[str,
 def _extract_collected_data(result: dict[str, Any]) -> dict[str, Any]:
     collected = result.get("collected_data") or {}
     return collected if isinstance(collected, dict) else {}
+
+
+def _ctr_prediction_cache_key(
+    *,
+    title: str | None,
+    thumbnail_description: str | None,
+    competitor_titles: list[str] | None,
+    top_insights: Any,
+) -> str:
+    """CTR 예측 결과를 고정/재사용하기 위한 결정적 cache key."""
+
+    normalized = {
+        "title": (title or "").strip(),
+        "thumbnail_description": (thumbnail_description or "").strip(),
+        "competitor_titles": sorted({(t or "").strip() for t in (competitor_titles or [])}),
+        # top_insights는 파이프라인 산출물(리스트/딕셔너리/문자열 등)일 수 있어 그대로 포함한다.
+        # key는 해시로만 쓰이므로 크기가 커도 DB에 저장되지 않는다.
+        "top_insights": top_insights,
+    }
+    payload = json.dumps(normalized, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _load_pipeline_result_dict(task_id: str) -> tuple[str, dict[str, Any], bool]:
@@ -192,14 +228,12 @@ async def stream_pipeline_status(task_id: str):
                         "task_id": task_id,
                         "process_logs": [],
                     }
-                    # status payload에 datetime 등이 포함될 수 있어 안전 직렬화 사용
-                    yield f"data: {PipelineTask.dumps(fallback)}\n\n"
+                    yield f"data: {_safe_json_dumps(fallback)}\n\n"
                     await asyncio.sleep(1)
                     continue
                 yield "event: error\ndata: {}\n\n"
                 break
-            # status payload에 datetime 등이 포함될 수 있어 안전 직렬화 사용
-            yield f"data: {PipelineTask.dumps(status)}\n\n"
+            yield f"data: {_safe_json_dumps(status)}\n\n"
             if status.get("status") in {"success", "failed"}:
                 break
             await asyncio.sleep(1)
@@ -721,27 +755,36 @@ async def predict_ctr(
     _, result = _get_task_status_and_result(request.task_id)
     collected = _extract_collected_data(result)
     top_insights = collected.get("top_insights", [])
+
+    cache_key = _ctr_prediction_cache_key(
+        title=request.title,
+        thumbnail_description=request.thumbnail_description,
+        competitor_titles=request.competitor_titles,
+        top_insights=top_insights,
+    )
+    analysis = result.setdefault("analysis", {})
+    cache = analysis.setdefault("ctr_prediction_cache", {})
+    if not isinstance(cache, dict):
+        cache = {}
+        analysis["ctr_prediction_cache"] = cache
+    if isinstance(cache, dict) and cache_key in cache:
+        cached = cache.get(cache_key) or {}
+        prediction = cached.get("prediction") if isinstance(cached, dict) else None
+        if isinstance(prediction, dict):
+            log_feature_end("ctr_predict", extra_detail=f"cache_hit key={cache_key[:12]}")
+            return {
+                "prediction": prediction,
+                "cache": {
+                    "hit": True,
+                    "key": cache_key,
+                    "stored_at": cached.get("stored_at"),
+                },
+            }
+
     log_feature_start("ctr_predict_input", f"top_insights={len(top_insights)}")
     log_feature_end("ctr_predict_input")
-    try:
-        log_feature_start("ctr_predict_ai", "predict_with_ai")
-        ai_prediction = await services.ctr_predictor.predict_with_ai(
-            title=request.title,
-            category="marketing",
-            top_insights=top_insights,
-        )
-        log_feature_end(
-            "ctr_predict_ai",
-            extra_detail=f"keys={','.join(sorted(ai_prediction.keys()))[:120]}",
-        )
-    except Exception as e:
-        log_feature_fail("ctr_predict", f"AI prediction failed: {e}")
-        log_feature_fail("ctr_predict_ai", str(e))
-        ai_prediction = services.ctr_predictor.predict_ctr(
-            title=request.title,
-            thumbnail_description=request.thumbnail_description,
-            competitor_titles=request.competitor_titles,
-        )
+    log_feature_start("ctr_predict_cache", f"cache_miss key={cache_key[:12]}")
+    log_feature_end("ctr_predict_cache")
 
     log_feature_start("ctr_predict_basic", "predict_ctr")
     basic = services.ctr_predictor.predict_ctr(
@@ -756,7 +799,27 @@ async def predict_ctr(
             f"total_score={basic.get('total_score')}"
         ),
     )
-    ai_prediction.update(
+
+    ai_prediction: dict[str, Any] = {}
+    try:
+        log_feature_start("ctr_predict_ai", "predict_with_ai")
+        ai_prediction = await services.ctr_predictor.predict_with_ai(
+            title=request.title,
+            category="marketing",
+            top_insights=top_insights,
+        )
+        log_feature_end(
+            "ctr_predict_ai",
+            extra_detail=f"keys={','.join(sorted(ai_prediction.keys()))[:120]}",
+        )
+    except Exception as e:
+        log_feature_fail("ctr_predict_ai", str(e))
+
+    # 응답 스키마는 유지하되, 점수/등급은 basic 결과를 단일 소스로 사용한다.
+    prediction: dict[str, Any] = {}
+    if isinstance(ai_prediction, dict):
+        prediction.update(ai_prediction)
+    prediction.update(
         {
             "breakdown": basic.get("breakdown", {}),
             "total_score": basic.get("total_score", 0),
@@ -768,16 +831,43 @@ async def predict_ctr(
     # 옵션: ML 모델이 로드된 경우 함께 반환(키는 기본 응답에 포함되며, 모델이 없으면 None)
     for k in ("ml_probability", "ml_predicted_ctr", "ml_prob"):
         if k in basic:
-            ai_prediction[k] = basic.get(k)
+            prediction[k] = basic.get(k)
+
+    # 결과를 저장해 같은 입력에 대해 예측을 고정한다.
+    stored_at = datetime.utcnow().isoformat()
+    cache[cache_key] = {
+        "prediction": prediction,
+        "stored_at": stored_at,
+        "input": {
+            "title": request.title,
+            "thumbnail_description": request.thumbnail_description,
+            "competitor_titles": request.competitor_titles or [],
+        },
+    }
+    analysis["ctr_prediction_latest"] = {
+        "key": cache_key,
+        "stored_at": stored_at,
+    }
+    pipeline_task_service = getattr(services, "pipeline_task_service", None)
+    if pipeline_task_service is not None:
+        try:
+            await pipeline_task_service.upsert_result(request.task_id, result)
+        except Exception:
+            # best-effort: DB 장애/권한 문제 등으로 실패해도 예측 응답은 계속 반환한다.
+            pass
     log_feature_end(
         "ctr_predict",
         extra_detail=(
-            f"predicted_ctr={ai_prediction.get('predicted_ctr')} "
-            f"grade={ai_prediction.get('grade')} "
-            f"total_score={ai_prediction.get('total_score')}"
+            f"predicted_ctr={prediction.get('predicted_ctr')} "
+            f"grade={prediction.get('grade')} "
+            f"total_score={prediction.get('total_score')} "
+            f"cache_store key={cache_key[:12]}"
         ),
     )
-    return {"prediction": ai_prediction}
+    return {
+        "prediction": prediction,
+        "cache": {"hit": False, "key": cache_key, "stored_at": stored_at},
+    }
 
 
 @router.post("/export/notion")
@@ -823,9 +913,29 @@ async def export_notion(
     collected = result.get("collected_data") or {}
     strategy = result.get("strategy") or {}
     top_insights = collected.get("top_insights") if isinstance(collected, dict) else []
+    pipeline_metrics = result.get("pipeline_metrics") if isinstance(result, dict) else None
+
+    generated_content = result.get("generated_content") if isinstance(result, dict) else None
+    selected_outputs = result.get("selected_outputs") if isinstance(result, dict) else None
+
+    export_meta = {
+        "task_id": request.task_id or request.history_id,
+        "executed_at": result.get("executed_at") or "",
+        "duration_seconds": float(result.get("duration_seconds") or 0.0),
+        "upload_status": result.get("upload_status") or ("success" if result.get("success") else "failed"),
+        "ai_stages_used": result.get("ai_stages_used") or [],
+        "upload_errors": result.get("upload_errors") or [],
+    }
+
+    metrics_payload: dict[str, Any] = {}
+    if isinstance(collected, dict) and collected.get("top_insights"):
+        metrics_payload["top_insights"] = collected.get("top_insights")
+    if pipeline_metrics is not None:
+        metrics_payload["pipeline_metrics"] = pipeline_metrics
 
     export_data = {
         "product": product_dict,
+        "meta": export_meta,
         "analysis": {
             "summary": strategy.get("summary", ""),
             "target_audience": strategy.get("target_audience", {}),
@@ -838,6 +948,9 @@ async def export_notion(
                 if isinstance(item, dict)
             ],
         },
+        "metrics": metrics_payload,
+        "generated_content": generated_content if isinstance(generated_content, dict) else {},
+        "selected_outputs": selected_outputs if isinstance(selected_outputs, dict) else {},
     }
 
     notion_url = services.export_service.export_notion(
