@@ -1,0 +1,50 @@
+steps:
+  # PR 검증용: "빌드만" 수행 (push/deploy 없음)
+  # - Docker build 성공 여부로 타입/의존성/빌드 깨짐을 가장 빠르게 잡는다.
+  # - 캐시를 쓰기 위해 이전 latest 이미지를 pull 시도한다.
+
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-lc'
+      - |
+        set -euo pipefail
+        docker pull gcr.io/$PROJECT_ID/nexloop-backend:latest || true
+        docker pull gcr.io/$PROJECT_ID/nexloop-frontend:latest || true
+
+  # Backend build (no push)
+  - name: 'gcr.io/cloud-builders/docker'
+    env:
+      - 'DOCKER_BUILDKIT=1'
+    args:
+      - 'build'
+      - '--cache-from=gcr.io/$PROJECT_ID/nexloop-backend:latest'
+      - '--build-arg'
+      - 'BUILDKIT_INLINE_CACHE=1'
+      - '-f'
+      - 'Dockerfile.backend'
+      - '-t'
+      - 'nexloop-backend:pr'
+      - '.'
+
+  # Frontend build (no push)
+  - name: 'gcr.io/cloud-builders/docker'
+    env:
+      - 'DOCKER_BUILDKIT=1'
+    args:
+      - 'build'
+      - '--cache-from=gcr.io/$PROJECT_ID/nexloop-frontend:latest'
+      - '--build-arg'
+      - 'BUILDKIT_INLINE_CACHE=1'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_API_URL=https://nexloop-backend-ekhgbjmhqq-du.a.run.app'
+      - '-f'
+      - 'Dockerfile.frontend'
+      - '-t'
+      - 'nexloop-frontend:pr'
+      - '.'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
