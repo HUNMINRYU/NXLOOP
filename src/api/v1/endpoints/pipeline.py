@@ -28,6 +28,7 @@ from services.pipeline_runner import execute_pipeline_task, init_pipeline_status
 # from utils.file_store import ensure_output_dir  <-- keeping if used later
 from utils.file_store import ensure_output_dir
 from utils.gcs_store import build_gcs_prefix, detect_video_ext, gcs_url_for
+from utils.log_throttle import should_log_throttled
 from utils.logger import log_feature_end, log_feature_fail, log_feature_start
 
 router = APIRouter()
@@ -119,7 +120,18 @@ async def get_pipeline_history(user: CurrentUser):
 
 @router.get("/status/{task_id}")
 async def get_pipeline_status(task_id: str):
-    log_feature_start("pipeline_status", task_id)
+    feature = "pipeline_status"
+    should_log = should_log_throttled(f"{feature}:{task_id}", interval_sec=10.0)
+
+    def _start() -> None:
+        if should_log:
+            log_feature_start(feature, task_id)
+
+    def _end(extra_detail: str = "") -> None:
+        if should_log:
+            log_feature_end(feature, extra_detail=extra_detail)
+
+    _start()
     status = PIPELINE_STATUS.get(task_id)
     if not status:
         services = get_services()
@@ -127,13 +139,13 @@ async def get_pipeline_status(task_id: str):
         if pipeline_task_service is not None:
             db_status = await pipeline_task_service.get_status(task_id)
             if db_status:
-                log_feature_end("pipeline_status", extra_detail="from_db")
+                _end(extra_detail="from_db")
                 return db_status
 
         # Cloud Run 다중 인스턴스에서 in-memory 상태가 다른 인스턴스로 라우팅되면 404가 섞여 보일 수 있다.
         # 프론트 폴링 UX를 깨지 않도록 "routing miss" 형태로 완화한다.
-        log_feature_fail("pipeline_status", f"Task not found (routing miss?): {task_id}")
-        log_feature_end("pipeline_status", extra_detail="routing_miss")
+        log_feature_fail(feature, f"Task not found (routing miss?): {task_id}")
+        _end(extra_detail="routing_miss")
         return {
             "status": "pending",
             "message": "작업 상태를 다른 인스턴스에서 처리 중입니다. 잠시 후 다시 확인하세요.",
@@ -145,7 +157,7 @@ async def get_pipeline_status(task_id: str):
             "task_id": task_id,
             "process_logs": [],
         }
-    log_feature_end("pipeline_status")
+    _end()
     return status
 
 
@@ -492,11 +504,7 @@ async def generate_video_from_selected_thumbnail_endpoint(
         product_dict = (
             product.model_dump()
             if product and hasattr(product, "model_dump")
-            else (
-                product.__dict__
-                if product
-                else {"name": product_name}
-            )
+            else (product.__dict__ if product else {"name": product_name})
         )
 
         # 2) 훅 텍스트 결정: 선택 썸네일 meta > strategy 훅 > 제품명
