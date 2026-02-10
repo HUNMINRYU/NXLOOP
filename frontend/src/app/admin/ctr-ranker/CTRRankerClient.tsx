@@ -118,8 +118,8 @@ export default function CTRRankerClient() {
             setRuns(res.runs || []);
             const latest = res.runs?.[0]?.id;
             if (latest) setSelectedRunId(latest);
-        } catch (e: any) {
-            setError(String(e?.message || e));
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : String(e));
         } finally {
             setLoading(false);
         }
@@ -132,8 +132,8 @@ export default function CTRRankerClient() {
         try {
             const res = await adminApproveCtrRankerCandidate(selectedRunId, { candidate_id: candidateId });
             setApprovedCandidateId(res.approval.candidate_id);
-        } catch (e: any) {
-            setError(String(e?.message || e));
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : String(e));
         } finally {
             setLoading(false);
         }

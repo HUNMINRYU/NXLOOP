@@ -19,6 +19,9 @@ from schemas.requests import RoleCreateRequest, ScheduleRequest, TeamCreateReque
 from schemas.responses import ScheduleResponse
 from services.admin_service import AdminService
 from services.scheduler_service import SchedulerService
+from services.notification_service import send_slack_notification
+from utils.cache import clear_all_api_cache, get_cache_stats
+from utils.logger import log_feature_end, log_feature_fail, log_feature_start
 
 
 class ToggleRequest(BaseModel):
@@ -50,24 +53,48 @@ class CompareModelsRequest(BaseModel):
     actuals: list[float]
 
 
-from utils.cache import clear_all_api_cache, get_cache_stats
-from utils.logger import log_feature_end, log_feature_fail, log_feature_start
-
 router = APIRouter()
+
+
+@router.get("/notifications/slack-test")
+async def slack_test(
+    user: Annotated[CurrentUser, Depends(require_role(["admin"]))],
+):
+    """Slack Incoming Webhook 연결 테스트 (관리자 전용)."""
+    log_feature_start("admin_slack_test", getattr(user, "email", ""))
+    try:
+        send_slack_notification(
+            f"[Nexloop] Slack test\n"
+            f"- user: {getattr(user, 'email', '')}\n"
+            f"- tier: {getattr(user, 'tier', '')}\n"
+            f"- env: {getattr(get_services(), 'settings', None).env if getattr(get_services(), 'settings', None) else 'unknown'}"
+        )
+        log_feature_end("admin_slack_test")
+        return {"status": "ok"}
+    except Exception as e:
+        # send_slack_notification 자체는 예외를 전파하지 않지만,
+        # 향후 구현 변경에 대비해 방어적으로 처리한다.
+        log_feature_fail("admin_slack_test", str(e)[:200])
+        raise HTTPException(status_code=500, detail="Slack test failed") from e
 
 
 @router.get("/cache/stats")
 async def get_cache_stats_endpoint(
     user: Annotated[CurrentUser, Depends(require_role(["admin"]))],
 ):
-    return {"stats": get_cache_stats()}
+    log_feature_start("admin_get_cache_stats")
+    stats = get_cache_stats()
+    log_feature_end("admin_get_cache_stats")
+    return {"stats": stats}
 
 
 @router.post("/cache/clear")
 async def clear_cache_endpoint(
     user: Annotated[CurrentUser, Depends(require_role(["admin"]))],
 ):
+    log_feature_start("admin_clear_cache")
     cleared = clear_all_api_cache()
+    log_feature_end("admin_clear_cache")
     return {"cleared": cleared}
 
 
@@ -156,7 +183,9 @@ async def list_roles(
     user: Annotated[CurrentUser, Depends(require_role(["admin"]))],
     service: AdminService = Depends(get_admin_service),
 ):
+    log_feature_start("admin_list_roles")
     roles = await service.get_roles()
+    log_feature_end("admin_list_roles")
     return {
         "roles": [
             {"id": role.id, "name": role.name, "description": role.description}
@@ -171,13 +200,19 @@ async def create_role(
     user: Annotated[CurrentUser, Depends(require_role(["admin"]))],
     service: AdminService = Depends(get_admin_service),
 ):
-    role = await service.create_role(
-        name=request.name,
-        description=request.description,
-        actor_email=getattr(user, "email", "unknown"),
-        actor_role=getattr(user, "role", "editor"),
-    )
-    return {"id": role.id, "name": role.name, "description": role.description}
+    log_feature_start("admin_create_role", request.name)
+    try:
+        role = await service.create_role(
+            name=request.name,
+            description=request.description,
+            actor_email=getattr(user, "email", "unknown"),
+            actor_role=getattr(user, "role", "editor"),
+        )
+        log_feature_end("admin_create_role")
+        return {"id": role.id, "name": role.name, "description": role.description}
+    except Exception as e:
+        log_feature_fail("admin_create_role", str(e))
+        raise
 
 
 @router.get("/teams")
@@ -185,7 +220,9 @@ async def list_teams(
     user: Annotated[CurrentUser, Depends(require_role(["admin"]))],
     service: AdminService = Depends(get_admin_service),
 ):
+    log_feature_start("admin_list_teams")
     teams = await service.get_teams()
+    log_feature_end("admin_list_teams")
     return {"teams": [{"id": team.id, "name": team.name} for team in teams]}
 
 
@@ -195,12 +232,18 @@ async def create_team(
     user: Annotated[CurrentUser, Depends(require_role(["admin"]))],
     service: AdminService = Depends(get_admin_service),
 ):
-    team = await service.create_team(
-        name=request.name,
-        actor_email=getattr(user, "email", "unknown"),
-        actor_role=getattr(user, "role", "editor"),
-    )
-    return {"id": team.id, "name": team.name}
+    log_feature_start("admin_create_team", request.name)
+    try:
+        team = await service.create_team(
+            name=request.name,
+            actor_email=getattr(user, "email", "unknown"),
+            actor_role=getattr(user, "role", "editor"),
+        )
+        log_feature_end("admin_create_team")
+        return {"id": team.id, "name": team.name}
+    except Exception as e:
+        log_feature_fail("admin_create_team", str(e))
+        raise
 
 
 @router.get("/audit-logs")
@@ -209,7 +252,9 @@ async def list_audit_logs(
     limit: int = 50,
     service: AdminService = Depends(get_admin_service),
 ):
+    log_feature_start("admin_list_audit_logs", f"limit={limit}")
     logs = await service.get_audit_logs(limit=limit)
+    log_feature_end("admin_list_audit_logs")
     return {
         "logs": [
             {
@@ -238,7 +283,9 @@ async def get_gcs_metadata(
     storage = services.storage_service
     bucket_name = storage.bucket_name
 
+    log_feature_start("admin_get_gcs_metadata", gcs_path or prefix)
     if not gcs_path and not prefix:
+        log_feature_fail("admin_get_gcs_metadata", "no path or prefix")
         raise HTTPException(
             status_code=400, detail="gcs_path 또는 prefix가 필요합니다."
         )
@@ -260,6 +307,7 @@ async def get_gcs_metadata(
         if not metadata:
             raise HTTPException(status_code=404, detail="Object not found")
         url = getattr(storage, "get_signed_url", lambda p: None)(object_path)
+        log_feature_end("admin_get_gcs_metadata", extra_detail="single_object")
         return {"items": [{**metadata, "signed_url": url}]}
 
     bucket, object_prefix = _parse_gcs_path(prefix or "")
@@ -274,6 +322,7 @@ async def get_gcs_metadata(
             continue
         url = getattr(storage, "get_signed_url", lambda p: None)(path)
         items.append({**metadata, "signed_url": url})
+    log_feature_end("admin_get_gcs_metadata")
     return {"items": items}
 
 
@@ -281,6 +330,7 @@ async def get_gcs_metadata(
 async def get_prompt_logs(
     user: Annotated[CurrentUser, Depends(require_role(["admin"]))], limit: int = 20
 ):
+    log_feature_start("admin_get_prompt_logs", f"limit={limit}")
     services = get_services()
     history = services.history_service.get_history_list()
     logs = []
@@ -295,6 +345,7 @@ async def get_prompt_logs(
                 "prompt_log": prompt_log,
             }
         )
+    log_feature_end("admin_get_prompt_logs")
     return {"logs": logs}
 
 
@@ -305,12 +356,14 @@ async def list_schedules(
     session=Depends(get_db_session),
 ):
     """스케줄 목록 조회"""
+    log_feature_start("admin_list_schedules")
     result = await session.execute(
         select(PipelineSchedule)
         .where(PipelineSchedule.deleted_at.is_(None))
         .order_by(PipelineSchedule.id.desc())
     )
     schedules = result.scalars().all()
+    log_feature_end("admin_list_schedules")
     return [ScheduleResponse.model_validate(s) for s in schedules]
 
 
@@ -323,6 +376,7 @@ async def create_schedule(
     scheduler_client: CloudSchedulerClient = Depends(get_scheduler_client),
 ):
     """스케줄 생성"""
+    log_feature_start("admin_create_schedule", request.name)
     service = SchedulerService(session, scheduler_client)
     try:
         schedule = await service.create_schedule(request, user.id)
@@ -335,8 +389,10 @@ async def create_schedule(
             entity_id=str(schedule.id),
             metadata={"name": schedule.name, "product": schedule.product_name},
         )
+        log_feature_end("admin_create_schedule")
         return ScheduleResponse.model_validate(schedule)
     except SchedulerError as e:
+        log_feature_fail("admin_create_schedule", str(e))
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
@@ -350,6 +406,7 @@ async def update_schedule(
     scheduler_client: CloudSchedulerClient = Depends(get_scheduler_client),
 ):
     """스케줄 수정"""
+    log_feature_start("admin_update_schedule", f"id={schedule_id} name={request.name}")
     service = SchedulerService(session, scheduler_client)
     try:
         schedule = await service.update_schedule(schedule_id, request)
@@ -362,10 +419,13 @@ async def update_schedule(
             entity_id=str(schedule.id),
             metadata={"name": schedule.name},
         )
+        log_feature_end("admin_update_schedule")
         return ScheduleResponse.model_validate(schedule)
     except ScheduleConflictError as e:
+        log_feature_fail("admin_update_schedule", "conflict")
         raise HTTPException(status_code=409, detail=str(e)) from e
     except (ScheduleNotFoundError, SchedulerError) as e:
+        log_feature_fail("admin_update_schedule", str(e))
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
@@ -378,6 +438,7 @@ async def delete_schedule(
     scheduler_client: CloudSchedulerClient = Depends(get_scheduler_client),
 ):
     """스케줄 삭제"""
+    log_feature_start("admin_delete_schedule", f"id={schedule_id}")
     service = SchedulerService(session, scheduler_client)
     try:
         await service.delete_schedule(schedule_id)
@@ -390,10 +451,13 @@ async def delete_schedule(
             entity_id=str(schedule_id),
             metadata={},
         )
+        log_feature_end("admin_delete_schedule")
         return {"message": "Schedule deleted"}
     except ScheduleNotFoundError as e:
+        log_feature_fail("admin_delete_schedule", f"Not found: {schedule_id}")
         raise HTTPException(status_code=404, detail=str(e)) from e
     except SchedulerError as e:
+        log_feature_fail("admin_delete_schedule", str(e))
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
@@ -407,6 +471,7 @@ async def toggle_schedule(
     scheduler_client: CloudSchedulerClient = Depends(get_scheduler_client),
 ):
     """스케줄 활성화/비활성화"""
+    log_feature_start("admin_toggle_schedule", f"id={schedule_id} enabled={body.enabled}")
     service = SchedulerService(session, scheduler_client)
     try:
         await service.toggle_schedule(schedule_id, body.enabled)
@@ -419,8 +484,11 @@ async def toggle_schedule(
             entity_id=str(schedule_id),
             metadata={"enabled": body.enabled},
         )
+        log_feature_end("admin_toggle_schedule")
         return {"message": f"Schedule {'enabled' if body.enabled else 'disabled'}"}
     except ScheduleNotFoundError as e:
+        log_feature_fail("admin_toggle_schedule", f"Not found: {schedule_id}")
         raise HTTPException(status_code=404, detail=str(e)) from e
     except SchedulerError as e:
+        log_feature_fail("admin_toggle_schedule", str(e))
         raise HTTPException(status_code=400, detail=str(e)) from e
