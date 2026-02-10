@@ -36,8 +36,11 @@ if _is_postgresql():
         future=True,
         pool_size=20,          # 기본 연결 수
         max_overflow=10,       # 초과 허용 연결 수
+        pool_timeout=10,       # 풀에서 커넥션을 기다리는 최대 시간(초)
         pool_recycle=3600,     # 연결 재사용 주기 (Cloud SQL 권장)
-        pool_pre_ping=True     # 연결 유효성 자동 체크
+        pool_pre_ping=True,    # 연결 유효성 자동 체크
+        # asyncpg connect timeout: 장애 시 무한 대기 대신 빠르게 실패하도록 한다.
+        connect_args={"timeout": 10},
     )
 else:
     # SQLite 등 로컬 환경용 설정
