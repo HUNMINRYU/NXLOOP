@@ -108,6 +108,9 @@ git commit -m "chore: resolve stash pop conflicts"
 
 ### 2.2 gcloud로 확인(추천)
 
+> 주의: 명령어 줄바꿈을 잘못 넣으면 `--format=...: command not found` 같은 에러가 납니다.  
+> 아래 커맨드는 “한 줄씩” 그대로 복붙하세요.
+
 최근 빌드 20개:
 
 ```bash
@@ -115,10 +118,31 @@ gcloud builds list --project=jnu-rise-edu-149 --region=us-central1 --limit=20 \
   --format="table(id,status,createTime,buildTriggerId,logUrl)"
 ```
 
+특정 트리거만 필터링해서 보기(권장):
+
+- 백엔드(main deploy 트리거)
+
+```bash
+gcloud builds list --project=jnu-rise-edu-149 --region=us-central1 --limit=10 --filter="buildTriggerId=9b383501-1a90-4a70-a66a-f6582fbaebe2" --format="table(id,status,createTime,logUrl)"
+```
+
+- 프론트(main deploy 트리거)
+
+```bash
+gcloud builds list --project=jnu-rise-edu-149 --region=us-central1 --limit=10 --filter="buildTriggerId=c88379f5-abdb-496d-91c0-1a946024b62a" --format="table(id,status,createTime,logUrl)"
+```
+
 빌드 로그 스트리밍(빌드 ID를 확인한 뒤):
 
 ```bash
 gcloud builds log --project=jnu-rise-edu-149 --region=us-central1 --stream BUILD_ID
+```
+
+Cloud Run이 새 리비전으로 전환됐는지 확인(배포 검증):
+
+```bash
+gcloud run services describe nexloop-backend --project=jnu-rise-edu-149 --region=asia-northeast3 --format="value(status.latestReadyRevisionName,status.url)"
+gcloud run services describe nexloop-frontend --project=jnu-rise-edu-149 --region=asia-northeast3 --format="value(status.latestReadyRevisionName,status.url)"
 ```
 
 ---

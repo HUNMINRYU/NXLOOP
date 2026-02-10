@@ -1,6 +1,7 @@
 steps:
   # 1. 백엔드 이미지 빌드
   - name: 'gcr.io/cloud-builders/docker'
+    env: ['DOCKER_BUILDKIT=1']
     args: ['build', '-f', 'Dockerfile.backend', '-t', 'gcr.io/$PROJECT_ID/nexloop-backend:latest', '.']
 
   # 2. 이미지 푸시
