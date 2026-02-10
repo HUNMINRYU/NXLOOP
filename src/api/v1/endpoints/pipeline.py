@@ -823,9 +823,29 @@ async def export_notion(
     collected = result.get("collected_data") or {}
     strategy = result.get("strategy") or {}
     top_insights = collected.get("top_insights") if isinstance(collected, dict) else []
+    pipeline_metrics = result.get("pipeline_metrics") if isinstance(result, dict) else None
+
+    generated_content = result.get("generated_content") if isinstance(result, dict) else None
+    selected_outputs = result.get("selected_outputs") if isinstance(result, dict) else None
+
+    export_meta = {
+        "task_id": request.task_id or request.history_id,
+        "executed_at": result.get("executed_at") or "",
+        "duration_seconds": float(result.get("duration_seconds") or 0.0),
+        "upload_status": result.get("upload_status") or ("success" if result.get("success") else "failed"),
+        "ai_stages_used": result.get("ai_stages_used") or [],
+        "upload_errors": result.get("upload_errors") or [],
+    }
+
+    metrics_payload: dict[str, Any] = {}
+    if isinstance(collected, dict) and collected.get("top_insights"):
+        metrics_payload["top_insights"] = collected.get("top_insights")
+    if pipeline_metrics is not None:
+        metrics_payload["pipeline_metrics"] = pipeline_metrics
 
     export_data = {
         "product": product_dict,
+        "meta": export_meta,
         "analysis": {
             "summary": strategy.get("summary", ""),
             "target_audience": strategy.get("target_audience", {}),
@@ -838,6 +858,9 @@ async def export_notion(
                 if isinstance(item, dict)
             ],
         },
+        "metrics": metrics_payload,
+        "generated_content": generated_content if isinstance(generated_content, dict) else {},
+        "selected_outputs": selected_outputs if isinstance(selected_outputs, dict) else {},
     }
 
     notion_url = services.export_service.export_notion(
