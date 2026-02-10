@@ -243,6 +243,9 @@ class PipelineOrchestrator:
             stage_counts.get("pre_filter", {}).get("filtered", 0)
             + stage_counts.get("post_filter", {}).get("filtered", 0)
         )
+        # filtering_rate는 "필터 단계에서 제거된 비율"로 정의한다.
+        # 과거 프론트/문서와의 호환을 위해 키는 유지하되, 의미 혼동을 막기 위해
+        # removed_rate(동일 값)도 함께 제공한다.
         filtering_rate = (
             round(total_filtered / stats["original_count"], 4)
             if stats["original_count"] > 0
@@ -286,6 +289,13 @@ class PipelineOrchestrator:
         original_count = int(stats.get("original_count") or 0)
         removed_count = int(total_filtered or 0)
 
+        # API/대시보드에서 "왜 20→5인데 filtering_rate=0%"처럼 보이는지" 혼동을 줄이기 위해
+        # 의미가 명확한 보조 지표를 함께 노출한다.
+        stats["removed_count"] = removed_count
+        stats["after_filter_count"] = after_filter_count
+        stats["selected_count"] = selected_count
+        stats["removed_rate"] = filtering_rate
+
         # 용어 정리:
         # - removed_count: pre/post filter 단계에서 "제거"된 건수
         # - after_filter_count: 필터 이후 남은 건수(=scoring 입력/출력 건수)
@@ -296,10 +306,17 @@ class PipelineOrchestrator:
         selection_rate_of_filtered = (
             (selected_count / after_filter_count * 100.0) if after_filter_count > 0 else 0.0
         )
+        reduction_rate_of_original = (
+            (1.0 - (selected_count / original_count)) * 100.0 if original_count > 0 else 0.0
+        )
+
+        stats["selection_rate_of_original"] = round(selection_rate_of_original / 100.0, 4)
+        stats["selection_rate_of_filtered"] = round(selection_rate_of_filtered / 100.0, 4)
+        stats["reduction_rate_of_original"] = round(reduction_rate_of_original / 100.0, 4)
 
         logger.info(
             "파이프라인 완료: original=%d → after_filter=%d (removed=%d, removed_rate=%.1f%%) → selected=%d "
-            "(selection_rate=%.1f%% of original, %.1f%% of filtered) (%.1f초)",
+            "(selection_rate=%.1f%% of original, %.1f%% of filtered, reduction=%.1f%% of original) (%.1f초)",
             original_count,
             after_filter_count,
             removed_count,
@@ -307,6 +324,7 @@ class PipelineOrchestrator:
             selected_count,
             selection_rate_of_original,
             selection_rate_of_filtered,
+            reduction_rate_of_original,
             total_duration,
             extra={
                 "stage_timings": stage_timings,
