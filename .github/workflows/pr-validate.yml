@@ -11,6 +11,10 @@ permissions:
 jobs:
   cloudbuild-pr-validate:
     runs-on: ubuntu-latest
+    # PR 이벤트에서 secrets가 없으면(auth step) 즉시 실패한다.
+    # Cloud Build 트리거(`nexloop-pr-validate`)가 이미 PR 검증을 담당하므로,
+    # secrets 미설정 상태에서도 체크가 "실패"로 남지 않게 guard를 둔다.
+    if: ${{ secrets.GCP_WIF_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT_EMAIL != '' && secrets.GCP_PROJECT_ID != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,4 +33,3 @@ jobs:
       - name: Cloud Build (build only)
         run: |
           gcloud beta builds submit --config=cloudbuild.pr.yaml .
-

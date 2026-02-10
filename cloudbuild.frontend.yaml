@@ -27,6 +27,9 @@ steps:
       - '--region=asia-northeast3'
       - '--platform=managed'
       - '--allow-unauthenticated'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--cpu-boost'
 
 options:
   logging: CLOUD_LOGGING_ONLY
