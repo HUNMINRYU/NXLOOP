@@ -439,7 +439,6 @@ async def train_and_save(
             groups.append(str(r.run_id))
 
         out_dir_p = Path(out_dir)
-        out_dir_p.mkdir(parents=True, exist_ok=True)
         report_base = f"{_today_kst().isoformat()}-ctr-approvals-ml"
         return train_and_save_ml(
             feature_rows=feature_rows,
@@ -466,7 +465,6 @@ async def train_and_save(
         groups2.append(str(idx))
 
     out_dir_p2 = Path(out_dir)
-    out_dir_p2.mkdir(parents=True, exist_ok=True)
     report_base2 = f"{_today_kst().isoformat()}-ctr-feedback-ml"
     return train_and_save_ml(
         feature_rows=feature_rows2,

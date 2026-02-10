@@ -2,7 +2,7 @@ from services.market_trend_service import MarketTrendService
 
 
 class DummyRagClient:
-    def search(
+    async def search(
         self,
         query: str,
         max_results: int = 5,

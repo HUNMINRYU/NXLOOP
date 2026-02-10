@@ -48,12 +48,12 @@ class CTRMLArtifact:
     pipeline: Any
 
     def predict_proba(self, features: dict[str, float]) -> float:
-        X = [[float(features.get(c, 0.0)) for c in self.cols]]
-        prob = float(self.pipeline.predict_proba(X)[0][1])
+        x_mat = [[float(features.get(c, 0.0)) for c in self.cols]]
+        prob = float(self.pipeline.predict_proba(x_mat)[0][1])
         return max(0.0, min(1.0, prob))
 
 
-def _train_pipeline(X: list[list[float]], y: list[int], seed: int) -> Any:
+def _train_pipeline(x_mat: list[list[float]], y: list[int], seed: int) -> Any:
     _ensure_sklearn()
     from sklearn.linear_model import LogisticRegression
     from sklearn.pipeline import Pipeline
@@ -72,7 +72,7 @@ def _train_pipeline(X: list[list[float]], y: list[int], seed: int) -> Any:
             ),
         ]
     )
-    pipe.fit(X, y)
+    pipe.fit(x_mat, y)
     return pipe
 
 
@@ -99,8 +99,8 @@ def train_and_save(
     if not feature_rows:
         raise ValueError("학습 데이터가 비어 있습니다.")
 
-    cols = sorted({k for row in feature_rows for k in row.keys()})
-    X = [[float(row.get(c, 0.0)) for c in cols] for row in feature_rows]
+    cols = sorted({k for row in feature_rows for k in row})
+    x_mat = [[float(row.get(c, 0.0)) for c in cols] for row in feature_rows]
     y = [int(v) for v in labels]
 
     # CV는 "평가용"이라서, 데이터가 너무 작거나 그룹 분할로 단일 클래스가 되는 케이스는
@@ -113,8 +113,10 @@ def train_and_save(
     def _has_two_classes(labels_: list[int]) -> bool:
         return len(set(labels_)) >= 2
 
-    def _evaluate_fold(pipe: Any, X_test: list[list[float]], y_test: list[int]) -> tuple[float, float, float, float]:
-        y_prob = pipe.predict_proba(X_test)[:, 1].tolist()
+    def _evaluate_fold(
+        pipe: Any, x_test: list[list[float]], y_test: list[int]
+    ) -> tuple[float, float, float, float]:
+        y_prob = pipe.predict_proba(x_test)[:, 1].tolist()
         y_pred = [1 if p >= 0.5 else 0 for p in y_prob]
         p, r, f1, _ = precision_recall_fscore_support(y_test, y_pred, average="binary", zero_division=0)
         try:
@@ -134,18 +136,18 @@ def train_and_save(
         n_groups = len(set(groups))
         n = min(int(n_splits), n_groups)
         splitter = GroupKFold(n_splits=max(2, n))
-        for train_idx, test_idx in splitter.split(X, y, groups=groups):
-            X_train = [X[i] for i in train_idx]
+        for train_idx, test_idx in splitter.split(x_mat, y, groups=groups):
+            x_train = [x_mat[i] for i in train_idx]
             y_train = [y[i] for i in train_idx]
-            X_test = [X[i] for i in test_idx]
+            x_test = [x_mat[i] for i in test_idx]
             y_test = [y[i] for i in test_idx]
 
             # 그룹 분할 특성상 train이 단일 클래스가 되기 쉬움 -> 해당 fold는 스킵
             if not _has_two_classes(y_train) or len(y_train) < 2:
                 continue
 
-            pipe = _train_pipeline(X_train, y_train, seed=seed)
-            p, r, f1, auc = _evaluate_fold(pipe, X_test, y_test)
+            pipe = _train_pipeline(x_train, y_train, seed=seed)
+            p, r, f1, auc = _evaluate_fold(pipe, x_test, y_test)
             p_list.append(p)
             r_list.append(r)
             f1_list.append(f1)
@@ -157,17 +159,17 @@ def train_and_save(
         n = min(int(n_splits), int(min_class_count))
         if n >= 2:
             splitter = StratifiedKFold(n_splits=int(n), shuffle=True, random_state=int(seed))
-            for train_idx, test_idx in splitter.split(X, y):
-                X_train = [X[i] for i in train_idx]
+            for train_idx, test_idx in splitter.split(x_mat, y):
+                x_train = [x_mat[i] for i in train_idx]
                 y_train = [y[i] for i in train_idx]
-                X_test = [X[i] for i in test_idx]
+                x_test = [x_mat[i] for i in test_idx]
                 y_test = [y[i] for i in test_idx]
 
                 if not _has_two_classes(y_train) or len(y_train) < 2:
                     continue
 
-                pipe = _train_pipeline(X_train, y_train, seed=seed)
-                p, r, f1, auc = _evaluate_fold(pipe, X_test, y_test)
+                pipe = _train_pipeline(x_train, y_train, seed=seed)
+                p, r, f1, auc = _evaluate_fold(pipe, x_test, y_test)
                 p_list.append(p)
                 r_list.append(r)
                 f1_list.append(f1)
@@ -175,7 +177,7 @@ def train_and_save(
                 valid_folds += 1
 
     # 최종 모델은 전체 데이터로 학습
-    final_pipe = _train_pipeline(X, y, seed=seed)
+    final_pipe = _train_pipeline(x_mat, y, seed=seed)
     artifact = CTRMLArtifact(cols=cols, pipeline=final_pipe)
 
     report = {

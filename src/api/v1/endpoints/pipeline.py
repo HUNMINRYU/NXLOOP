@@ -14,6 +14,7 @@ from config.products import get_product_by_name
 from core.audit import record_audit_log
 from core.state import PIPELINE_RESULTS, PIPELINE_STATUS
 from infrastructure.database.connection import get_db_session
+from infrastructure.database.models import PipelineTask
 from schemas.requests import (
     AnalysisTaskRequest,
     ApprovalStatusRequest,
