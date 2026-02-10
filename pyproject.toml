@@ -31,6 +31,10 @@ dependencies = [
     "pytz>=2024.1",
     # Cloud Run 배포 환경에서 pipeline 단계가 numpy를 import합니다.
     "numpy>=1.26.0",
+    # CTR 학습 모델(joblib/pickle)을 런타임에서 로드할 수 있도록 경량 의존성 추가
+    "joblib>=1.4.0",
+    # CTR 학습 모델이 sklearn Pipeline(LogisticRegression 등)이라 런타임에도 필요
+    "scikit-learn>=1.4.0",
     "rank-bm25>=0.2.2",
     "stripe>=8.0.0",
 ]

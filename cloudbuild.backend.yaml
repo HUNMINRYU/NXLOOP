@@ -26,6 +26,9 @@ steps:
       # 배포 파이프라인에서는 CORS_ORIGINS를 건드리지 않고, 운영 환경에서 별도 업데이트로 관리한다.
       - '--update-env-vars=APP_URL=https://nexloop-backend-ekhgbjmhqq-du.a.run.app'
       - '--min-instances=1'
+      # Cloud SQL(db-f1-micro) 과부하/커넥션 폭주 방지용 안전장치
+      - '--max-instances=2'
+      - '--concurrency=20'
 
 options:
   logging: CLOUD_LOGGING_ONLY

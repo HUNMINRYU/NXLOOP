@@ -14,6 +14,13 @@ from config.products import get_product_by_name
 from core.audit import record_audit_log
 from core.state import PIPELINE_RESULTS, PIPELINE_STATUS
 from infrastructure.database.connection import get_db_session
+
+# NOTE: Streaming status payload은 다양한 객체(datetime 등)를 포함할 수 있어 안전 직렬화가 필요하다.
+# DB 모델(PipelineTask)의 dumps()를 사용할 수 있으면 사용하고, 그렇지 않으면 fallback 한다.
+try:
+    from infrastructure.database.models import PipelineTask as _PipelineTaskModel
+except Exception:  # pragma: no cover
+    _PipelineTaskModel = None
 from schemas.requests import (
     AnalysisTaskRequest,
     ApprovalStatusRequest,
@@ -27,9 +34,18 @@ from services.pipeline_runner import execute_pipeline_task, init_pipeline_status
 # from utils.file_store import ensure_output_dir  <-- keeping if used later
 from utils.file_store import ensure_output_dir
 from utils.gcs_store import build_gcs_prefix, detect_video_ext, gcs_url_for
+from utils.log_throttle import should_log_throttled
 from utils.logger import log_feature_end, log_feature_fail, log_feature_start
 
 router = APIRouter()
+
+
+def _safe_json_dumps(payload: Any) -> str:
+    """SSE 전송용 payload를 안전하게 JSON 문자열로 직렬화한다."""
+
+    if _PipelineTaskModel is not None and hasattr(_PipelineTaskModel, "dumps"):
+        return _PipelineTaskModel.dumps(payload)
+    return json.dumps(payload, ensure_ascii=False, default=str)
 
 
 def _get_task_status_and_result(task_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -118,7 +134,18 @@ async def get_pipeline_history(user: CurrentUser):
 
 @router.get("/status/{task_id}")
 async def get_pipeline_status(task_id: str):
-    log_feature_start("pipeline_status", task_id)
+    feature = "pipeline_status"
+    should_log = should_log_throttled(f"{feature}:{task_id}", interval_sec=10.0)
+
+    def _start() -> None:
+        if should_log:
+            log_feature_start(feature, task_id)
+
+    def _end(extra_detail: str = "") -> None:
+        if should_log:
+            log_feature_end(feature, extra_detail=extra_detail)
+
+    _start()
     status = PIPELINE_STATUS.get(task_id)
     if not status:
         services = get_services()
@@ -126,13 +153,18 @@ async def get_pipeline_status(task_id: str):
         if pipeline_task_service is not None:
             db_status = await pipeline_task_service.get_status(task_id)
             if db_status:
-                log_feature_end("pipeline_status", extra_detail="from_db")
+                _end(extra_detail="from_db")
                 return db_status
 
         # Cloud Run 다중 인스턴스에서 in-memory 상태가 다른 인스턴스로 라우팅되면 404가 섞여 보일 수 있다.
         # 프론트 폴링 UX를 깨지 않도록 "routing miss" 형태로 완화한다.
-        log_feature_fail("pipeline_status", f"Task not found (routing miss?): {task_id}")
-        log_feature_end("pipeline_status", extra_detail="routing_miss")
+        # routing miss는 진짜 실패라기보다 라우팅/일시 지연이므로, 에러 로그 스팸을 막기 위해 별도로 throttle 한다.
+        should_log_routing_miss = should_log_throttled(
+            f"{feature}:routing_miss:{task_id}", interval_sec=30.0
+        )
+        if should_log_routing_miss:
+            log_feature_fail(feature, f"Task not found (routing miss?): {task_id}")
+        _end(extra_detail="routing_miss")
         return {
             "status": "pending",
             "message": "작업 상태를 다른 인스턴스에서 처리 중입니다. 잠시 후 다시 확인하세요.",
@@ -144,7 +176,7 @@ async def get_pipeline_status(task_id: str):
             "task_id": task_id,
             "process_logs": [],
         }
-    log_feature_end("pipeline_status")
+    _end()
     return status
 
 
@@ -174,14 +206,12 @@ async def stream_pipeline_status(task_id: str):
                         "task_id": task_id,
                         "process_logs": [],
                     }
-                    # status payload에 datetime 등이 포함될 수 있어 안전 직렬화 사용
-                    yield f"data: {PipelineTask.dumps(fallback)}\n\n"
+                    yield f"data: {_safe_json_dumps(fallback)}\n\n"
                     await asyncio.sleep(1)
                     continue
                 yield "event: error\ndata: {}\n\n"
                 break
-            # status payload에 datetime 등이 포함될 수 있어 안전 직렬화 사용
-            yield f"data: {PipelineTask.dumps(status)}\n\n"
+            yield f"data: {_safe_json_dumps(status)}\n\n"
             if status.get("status") in {"success", "failed"}:
                 break
             await asyncio.sleep(1)
@@ -747,6 +777,10 @@ async def predict_ctr(
             "ctr_range": basic.get("ctr_range", ""),
         }
     )
+    # 옵션: ML 모델이 로드된 경우 함께 반환(키는 기본 응답에 포함되며, 모델이 없으면 None)
+    for k in ("ml_probability", "ml_predicted_ctr", "ml_prob"):
+        if k in basic:
+            ai_prediction[k] = basic.get(k)
     log_feature_end(
         "ctr_predict",
         extra_detail=(

@@ -14,6 +14,36 @@ def _is_postgresql() -> bool:
     """현재 데이터베이스가 PostgreSQL인지 확인"""
     return DATABASE_URL.startswith("postgresql")
 
+def _env_int(env: "os._Environ[str]", key: str, default: int) -> int:
+    raw = (env.get(key) or "").strip()
+    if not raw:
+        return int(default)
+    try:
+        return int(raw)
+    except Exception:
+        return int(default)
+
+
+def _postgres_engine_kwargs_for_env(env: "os._Environ[str]") -> dict[str, object]:
+    """Cloud Run + Cloud SQL(Postgres) 운영을 위한 엔진 kwargs.
+
+    db-f1-micro 같은 작은 인스턴스에서 커넥션 폭주를 막기 위해
+    기본 풀 크기를 보수적으로 잡고(override 가능), 장애 시 빠르게 실패하도록 timeout을 둔다.
+    """
+    pool_size = _env_int(env, "DB_POOL_SIZE", 5)
+    max_overflow = _env_int(env, "DB_MAX_OVERFLOW", 2)
+    pool_timeout = _env_int(env, "DB_POOL_TIMEOUT", 10)
+    connect_timeout = _env_int(env, "DB_CONNECT_TIMEOUT", 10)
+
+    return {
+        "pool_size": pool_size,
+        "max_overflow": max_overflow,
+        "pool_timeout": pool_timeout,
+        "pool_recycle": 3600,  # Cloud SQL 권장
+        "pool_pre_ping": True,
+        "connect_args": {"timeout": connect_timeout},
+    }
+
 
 
 def _ensure_sqlite_dir(database_url: str) -> None:
@@ -34,10 +64,8 @@ if _is_postgresql():
         DATABASE_URL,
         echo=False,
         future=True,
-        pool_size=20,          # 기본 연결 수
-        max_overflow=10,       # 초과 허용 연결 수
-        pool_recycle=3600,     # 연결 재사용 주기 (Cloud SQL 권장)
-        pool_pre_ping=True     # 연결 유효성 자동 체크
+        # NOTE: kwargs는 운영 환경에서 env로 조절 가능.
+        **_postgres_engine_kwargs_for_env(os.environ),
     )
 else:
     # SQLite 등 로컬 환경용 설정

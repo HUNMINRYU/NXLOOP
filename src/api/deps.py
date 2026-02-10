@@ -1,12 +1,19 @@
+import asyncio
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import Depends, HTTPException, Request
+from sqlalchemy.exc import SQLAlchemyError, TimeoutError as SQLAlchemyTimeoutError
 
 from config.dependencies import get_services
 from infrastructure.database.connection import get_db_session
+from utils.log_throttle import should_log_throttled
+from utils.logger import log_feature_fail
 
 if TYPE_CHECKING:
     from infrastructure.clients.scheduler_client import CloudSchedulerClient
+
+
+_AUTH_DB_THROTTLE_SEC = 30.0
 
 
 async def get_current_user(
@@ -18,7 +25,24 @@ async def get_current_user(
 
     session_id = request.cookies.get("nexloop_session")
     if session_id:
-        return await services.auth_service.get_user_by_session_id(session, session_id)
+        try:
+            return await services.auth_service.get_user_by_session_id(session, session_id)
+        except HTTPException:
+            # 인증 실패(401/403 등)는 그대로 클라이언트로 전달
+            raise
+        except (asyncio.TimeoutError, SQLAlchemyTimeoutError, SQLAlchemyError) as e:
+            # DB/네트워크 장애는 500 stack trace 대신 503으로 명확히 반환하고,
+            # 로그 스팸 방지를 위해 interval 기반 throttle을 적용한다.
+            key = f"auth_db_unavailable:{session_id[:8]}"
+            if should_log_throttled(key, _AUTH_DB_THROTTLE_SEC):
+                log_feature_fail("auth_db_unavailable", f"{type(e).__name__}: {str(e)[:200]}")
+            raise HTTPException(status_code=503, detail="Database unavailable") from e
+        except Exception as e:
+            # 알 수 없는 예외도 500 stack trace 폭주를 막고 메시지를 제한한다.
+            key = f"auth_unexpected:{session_id[:8]}"
+            if should_log_throttled(key, _AUTH_DB_THROTTLE_SEC):
+                log_feature_fail("auth_unexpected", f"{type(e).__name__}: {str(e)[:200]}")
+            raise HTTPException(status_code=500, detail="Authentication failed") from e
 
     raise HTTPException(status_code=401, detail="Authentication required")
 
@@ -40,7 +64,17 @@ async def get_current_user_optional(
         if session_id:
             return await services.auth_service.get_user_by_session_id(session, session_id)
         return None
-    except Exception:
+    except HTTPException:
+        return None
+    except (asyncio.TimeoutError, SQLAlchemyTimeoutError, SQLAlchemyError) as e:
+        key = f"auth_optional_db_unavailable:{(request.cookies.get('nexloop_session') or '')[:8]}"
+        if should_log_throttled(key, _AUTH_DB_THROTTLE_SEC):
+            log_feature_fail("auth_optional_db_unavailable", f"{type(e).__name__}: {str(e)[:200]}")
+        return None
+    except Exception as e:
+        key = f"auth_optional_unexpected:{(request.cookies.get('nexloop_session') or '')[:8]}"
+        if should_log_throttled(key, _AUTH_DB_THROTTLE_SEC):
+            log_feature_fail("auth_optional_unexpected", f"{type(e).__name__}: {str(e)[:200]}")
         return None
 
 
