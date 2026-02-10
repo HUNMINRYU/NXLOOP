@@ -82,10 +82,12 @@ export default function usePipeline() {
     let isActive = true;
     let pollIntervalId: ReturnType<typeof setInterval> | undefined;
     let reconnectTimeoutId: ReturnType<typeof setTimeout> | undefined;
+    let sseWatchdogId: ReturnType<typeof setInterval> | undefined;
     let eventSource: EventSource | null = null;
 
     // SSE 상태 플래그: SSE가 정상으로 판단되면 polling은 즉시 중단한다.
     let isSseHealthy = false;
+    let lastSseMessageAtMs = 0;
     let reconnectDelayMs = 1000;
 
     const fetchResultOnce = async () => {
@@ -123,12 +125,20 @@ export default function usePipeline() {
       }
     };
 
+    const stopSseWatchdog = () => {
+      if (sseWatchdogId) {
+        clearInterval(sseWatchdogId);
+        sseWatchdogId = undefined;
+      }
+    };
+
     const closeEventSource = () => {
       if (eventSource) {
         eventSource.close();
         eventSource = null;
       }
       isSseHealthy = false;
+      lastSseMessageAtMs = 0;
     };
 
     const markSseHealthy = () => {
@@ -136,6 +146,22 @@ export default function usePipeline() {
       reconnectDelayMs = 1000;
       stopPolling();
       stopReconnectTimer();
+    };
+
+    const startSseWatchdogIfNeeded = () => {
+      if (sseWatchdogId) return;
+      // SSE 연결이 열려도 메시지가 안 오면(half-open/서버 이슈) polling까지 같이 멈춰 보일 수 있다.
+      // 마지막 메시지 기준으로 watchdog을 두고, 일정 시간 동안 메시지가 없으면 polling 폴백 + 재연결한다.
+      sseWatchdogId = setInterval(() => {
+        if (!isActive) return;
+        if (!isSseHealthy) return;
+        if (!lastSseMessageAtMs) return;
+        if (Date.now() - lastSseMessageAtMs < 15_000) return;
+
+        closeEventSource();
+        startPolling();
+        scheduleReconnect();
+      }, 5000);
     };
 
     const poll = async () => {
@@ -191,26 +217,30 @@ export default function usePipeline() {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
         eventSource = new EventSource(`${baseUrl}/api/v1/pipeline/status-stream/${taskId}`);
 
-        // onopen 또는 첫 onmessage를 SSE 복구 성공으로 간주하고 polling을 즉시 중단한다.
-        eventSource.onopen = () => {
-          if (!isActive) return;
-          markSseHealthy();
-        };
-
         eventSource.onmessage = async (event) => {
           if (!isActive) return;
-          markSseHealthy();
+          try {
+            const streamStatus = JSON.parse(event.data) as PipelineStatus;
+            lastSseMessageAtMs = Date.now();
+            markSseHealthy();
+            startSseWatchdogIfNeeded();
 
-          const streamStatus = JSON.parse(event.data) as PipelineStatus;
-          const finished = streamStatus?.status === 'success' || streamStatus?.status === 'failed';
+            const finished = streamStatus?.status === 'success' || streamStatus?.status === 'failed';
 
-          if (finished) {
-            stopPolling();
-            stopReconnectTimer();
+            if (finished) {
+              stopPolling();
+              stopReconnectTimer();
+              stopSseWatchdog();
+              closeEventSource();
+              await handleFinished(streamStatus);
+            } else {
+              setExecutionState({ status: streamStatus });
+            }
+          } catch {
+            // payload가 예상과 다르면 polling 폴백 + 재연결로 복구한다.
             closeEventSource();
-            await handleFinished(streamStatus);
-          } else {
-            setExecutionState({ status: streamStatus });
+            startPolling();
+            scheduleReconnect();
           }
         };
 
@@ -238,6 +268,7 @@ export default function usePipeline() {
     return () => {
       isActive = false;
       stopReconnectTimer();
+      stopSseWatchdog();
       closeEventSource();
       stopPolling();
     };
@@ -247,6 +278,7 @@ export default function usePipeline() {
     if (!selectedProduct || isRunning) return;
     
     setExecutionState({ 
+        taskId: '',
         error: '', 
         result: null, 
         status: null, 
