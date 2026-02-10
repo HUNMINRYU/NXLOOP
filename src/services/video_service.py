@@ -3,6 +3,7 @@
 AI 기반 마케팅 비디오 생성 비즈니스 로직
 """
 
+import hashlib
 import re  # 정규식 모듈 추가
 from collections.abc import Callable
 from typing import Any
@@ -10,7 +11,16 @@ from typing import Any
 from core.exceptions import VideoGenerationError
 from core.prompts.veo_template import VeoTemplateManager
 from infrastructure.clients.veo_client import VeoClient
-from utils.logger import log_error, log_info, log_step, log_success
+from utils.cache import TTLCache
+from utils.logger import (
+    log_error,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
+    log_info,
+    log_step,
+    log_success,
+)
 
 
 class VideoService:
@@ -18,6 +28,8 @@ class VideoService:
 
     def __init__(self, client: VeoClient) -> None:
         self._client = client
+        # prompt-caching: 동일 입력(이미지/제품/훅/모드)에 대한 멀티모달 프롬프트는 반복 호출이 잦으므로 캐시한다.
+        self._story_prompt_cache = TTLCache(default_ttl=24 * 3600)
 
     def sanitize_prompt_input(self, text: str) -> str:
         """
@@ -108,6 +120,7 @@ class VideoService:
         # [Defense] 입력값 정화
         safe_prompt = self.sanitize_prompt_input(prompt)
         self._validate_prompt_safety(safe_prompt)
+        log_feature_start("video_generate", f"dur={duration_seconds} mode={mode}")
         log_step("비디오 생성 요청", "시작", f"{duration_seconds}s, {resolution}")
 
         try:
@@ -165,9 +178,11 @@ class VideoService:
             else:
                 log_info(f"비디오 생성 상태: {result[:100]}")
 
+            log_feature_end("video_generate")
             return result
 
         except Exception as e:
+            log_feature_fail("video_generate", str(e))
             log_error(f"비디오 생성 서비스 실패: {e}")
             raise VideoGenerationError(
                 f"비디오 생성 실패: {e}",
@@ -182,6 +197,7 @@ class VideoService:
         progress_callback: Callable[[str, int], None] | None = None,
     ) -> bytes | None:
         """이미지 기반 비디오 생성 (Image-to-Video)"""
+        log_feature_start("video_generate_from_image", f"dur={duration_seconds}")
         # [Defense] 입력값 정화
         safe_prompt = self.sanitize_prompt_input(prompt)
         self._validate_prompt_safety(safe_prompt)
@@ -208,9 +224,11 @@ class VideoService:
                 else:
                     log_info(f"I2V 생성 결과: {result[:100]}")
 
+            log_feature_end("video_generate_from_image")
             return result
 
         except Exception as e:
+            log_feature_fail("video_generate_from_image", str(e))
             log_error(f"I2V 생성 서비스 실패: {e}")
             raise VideoGenerationError(
                 f"이미지 기반 비디오 생성 실패: {e}",
@@ -225,6 +243,7 @@ class VideoService:
         progress_callback: Callable[[str, int], None] | None = None,
     ) -> bytes | str:
         """기존 비디오 연장"""
+        log_feature_start("video_extend", f"dur={duration_seconds}")
         # [Defense] 입력값 정화
         safe_prompt = self.sanitize_prompt_input(prompt)
         self._validate_prompt_safety(safe_prompt)
@@ -249,9 +268,11 @@ class VideoService:
             else:
                 log_info(f"비디오 연장 상태: {result[:100]}")
 
+            log_feature_end("video_extend")
             return result
 
         except Exception as e:
+            log_feature_fail("video_extend", str(e))
             log_error(f"비디오 연장 서비스 실패: {e}")
             raise VideoGenerationError(
                 f"비디오 연장 실패: {e}",
@@ -272,6 +293,16 @@ class VideoService:
         log_step("Vision-Narrative", "프롬프트 생성", f"Mode: {mode}")
 
         try:
+            # prompt-caching: 이미지 해시 + 컨텍스트 기반으로 캐시 키 생성
+            img_hash = hashlib.sha256(image_bytes).hexdigest() if image_bytes else "noimg"
+            p_name = str(product.get("name", "") or "")
+            p_desc = str(product.get("description", "") or "")
+            cache_key = f"vision_story|mode={mode}|img={img_hash}|p={p_name}|d={p_desc}|hook={hook_text}"
+            cached = self._story_prompt_cache.get(cache_key)
+            if isinstance(cached, str) and cached.strip():
+                log_info("Vision-Narrative 프롬프트 캐시 히트")
+                return cached
+
             # 1. 템플릿 로드
             system_prompt = VeoTemplateManager.get_system_prompt()
             template = VeoTemplateManager.get_template(mode)
@@ -298,6 +329,8 @@ class VideoService:
             )
 
             log_success("Vision-Narrative 프롬프트 생성 완료")
+            if prompt:
+                self._story_prompt_cache.set(cache_key, prompt)
             return prompt
 
         except Exception as e:
@@ -329,6 +362,7 @@ class VideoService:
         progress_callback: Callable[[str, int], None] | None = None,
     ) -> bytes | str:
         """마케팅 비디오 생성"""
+        log_feature_start("video_generate_marketing", product.get("name", "N/A"))
         p_name = product.get("name", "N/A")
         log_step("마케팅 비디오 생성", "시작", f"제품: {p_name}")
 
@@ -347,7 +381,7 @@ class VideoService:
         prompt = self.create_marketing_prompt(product, insights, hook_text)
 
         # 비디오 생성
-        return self.generate(
+        res = self.generate(
             prompt=prompt,
             duration_seconds=duration_seconds,
             mode=mode,
@@ -355,6 +389,8 @@ class VideoService:
             enable_dual_phase_beta=enable_dual_phase_beta,
             progress_callback=progress_callback,
         )
+        log_feature_end("video_generate_marketing")
+        return res
 
     def get_available_motions(self) -> list[str]:
         """사용 가능한 카메라 모션 목록"""

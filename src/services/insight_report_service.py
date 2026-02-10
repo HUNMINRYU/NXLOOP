@@ -15,7 +15,7 @@ class InsightReportService:
         self._rag_client = rag_client
         self._rag_ingestion = rag_ingestion
 
-    def generate_daily_report(
+    async def generate_daily_report(
         self,
         query: str,
         max_results: int,
@@ -33,7 +33,7 @@ class InsightReportService:
         if not safe_query:
             return {"ingested": 0, "report": None}
 
-        results = self._rag_client.search(
+        results = await self._rag_client.search(
             safe_query,
             max_results=max_results,
             data_store_id=data_store_id,

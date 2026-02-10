@@ -38,8 +38,11 @@ export default function Hero({ demoUrl }: HeroProps) {
           The beginning of seamless automation
         </p>
         {/* Brand title with heavy shadow */}
-        <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-[9rem] font-black tracking-tighter mb-10 md:mb-12 leading-[0.9] drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)] text-white px-4">
-          NEX<span className="text-transparent bg-clip-text bg-gradient-to-r from-[#0ca678] via-[#6366f1] to-[#0ca678]">LOOP</span>
+        <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-[9rem] font-black tracking-tighter mb-10 md:mb-12 leading-[0.9] drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)] text-white px-4 overflow-visible">
+          NEX
+          <span className="inline-block pr-[0.06em] text-transparent bg-clip-text bg-gradient-to-r from-[#0ca678] via-[#6366f1] to-[#0ca678]">
+            LOOP
+          </span>
         </h1>
         <p className="text-lg sm:text-2xl font-medium mb-12 max-w-2xl mx-auto px-2 text-white/90">
 	          Set your goals, then let Gemini&apos;s intelligence bridge the gap. Your

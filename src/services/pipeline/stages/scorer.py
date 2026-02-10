@@ -6,7 +6,7 @@ from api import validate_json_output
 from core.interfaces.ai_service import IMarketingAIService
 from core.prompts import prompt_registry
 from services.pipeline.types import Candidate, CandidateScore
-from utils.logger import get_logger
+from utils.logger import get_logger, log_feature_end, log_feature_start
 
 logger = get_logger(__name__)
 
@@ -35,15 +35,28 @@ class SemanticScorer:
         if not candidates:
             return []
 
+        log_feature_start("xalgo_semantic_scorer", f"candidates={len(candidates)}")
+
         # AI 클라이언트가 없으면(테스트/로컬) 보수적으로 slop 처리
         if self.gemini_client is None:
             for c in candidates:
                 self._apply_score(c, p_dwell=0.0, p_share=0.0, p_action=0.0)
-            return sorted(candidates, key=lambda c: c.score.final_score, reverse=True)
+            ranked = sorted(candidates, key=lambda c: c.score.final_score, reverse=True)
+            log_feature_end("xalgo_semantic_scorer", extra_detail="gemini_client_missing")
+            return ranked
 
         tasks = [self._score_single(candidate) for candidate in candidates]
         await asyncio.gather(*tasks)
-        return sorted(candidates, key=lambda c: c.score.final_score, reverse=True)
+        ranked = sorted(candidates, key=lambda c: c.score.final_score, reverse=True)
+        slop_count = sum(1 for c in ranked if bool(getattr(c, "is_slop", False)))
+        avg_score = (
+            sum(float(c.score.final_score) for c in ranked) / len(ranked) if ranked else 0.0
+        )
+        log_feature_end(
+            "xalgo_semantic_scorer",
+            extra_detail=f"slop={slop_count} avg_score={avg_score:.3f}",
+        )
+        return ranked
 
     async def _score_single(self, candidate: Candidate) -> None:
         prompt = prompt_registry.get("algorithm.semantic_scoring")

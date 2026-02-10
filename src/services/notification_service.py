@@ -28,11 +28,14 @@ def send_slack_notification(message: str) -> None:
     """
     url = settings.slack_webhook_url
     if not url:
-        logger.debug("Slack webhook URL이 설정되지 않아 알림을 건너뜁니다.")
+        # 운영에서 슬랙이 안 올 때 원인 추적을 위해 INFO로 남긴다.
+        logger.info("Slack 알림 건너뜀: SLACK_WEBHOOK_URL이 비어 있습니다")
         return
 
     try:
-        resp = requests.post(url, json={"text": message}, timeout=5)
+        # Slack incoming webhook은 payload.text 기반. 너무 긴 메시지는 Slack에서 거절될 수 있어 잘라낸다.
+        safe_message = message if len(message) <= 3500 else message[:3500] + "…(truncated)"
+        resp = requests.post(url, json={"text": safe_message}, timeout=5)
         if resp.status_code != 200:
             logger.warning(
                 "Slack 알림 전송 실패: status=%s body=%s",
@@ -40,7 +43,8 @@ def send_slack_notification(message: str) -> None:
                 resp.text[:200],
             )
         else:
-            logger.info("Slack 알림 전송 완료")
+            # Slack은 보통 body로 "ok"를 돌려준다.
+            logger.info("Slack 알림 전송 완료 (200 %s)", (resp.text or "").strip()[:50])
     except Exception as e:
         logger.warning("Slack 알림 전송 중 오류: %s", e)
 

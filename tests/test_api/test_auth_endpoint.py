@@ -1,21 +1,65 @@
 """
-Auth API 엔드포인트 테스트
+Auth 엔드포인트 로직 테스트
 
-FastAPI dependency_overrides를 사용하여 DB/서비스 의존성을 mock 처리
+주의: 이 리포지토리 환경에서는 Starlette/FastAPI TestClient가 간헐적으로 hang 될 수 있어
+ASGI 레이어를 우회하고 라우트 함수/의존성 함수를 직접 호출해 검증합니다.
 """
+
+from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
+from fastapi import HTTPException, Request, Response
+
+from api.deps import get_current_user
+from api.v1.endpoints.auth import (
+    CSRF_COOKIE,
+    SESSION_COOKIE,
+    login,
+    logout,
+    me,
+    signup,
+)
+from schemas.requests import AuthLoginRequest, AuthSignupRequest
+
+
+def _make_request(
+    *,
+    method: str,
+    path: str,
+    cookies: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+    scheme: str = "http",
+) -> Request:
+    raw_headers: list[tuple[bytes, bytes]] = []
+    if cookies:
+        cookie_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+        raw_headers.append((b"cookie", cookie_str.encode("latin-1")))
+    if headers:
+        for k, v in headers.items():
+            raw_headers.append((k.lower().encode("latin-1"), v.encode("latin-1")))
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": method.upper(),
+        "scheme": scheme,
+        "path": path,
+        "raw_path": path.encode("latin-1"),
+        "query_string": b"",
+        "headers": raw_headers,
+        "client": ("testclient", 12345),
+        "server": ("testserver", 80),
+    }
+    return Request(scope)
 
 
 @pytest.fixture
 def mock_services():
-    """서비스 계층 mock"""
     services = MagicMock()
 
-    # mock user 객체
     mock_user = MagicMock()
     mock_user.email = "test@example.com"
     mock_user.role = "editor"
@@ -23,7 +67,6 @@ def mock_services():
     mock_user.tier = "FREE"
     mock_user.subscription_status = "none"
 
-    # mock session 객체
     mock_session = MagicMock()
     mock_session.id = "session-12345678-abcd"
 
@@ -38,135 +81,102 @@ def mock_services():
 
 
 @pytest.fixture
-def client(mock_services):
-    """TestClient with dependency overrides"""
+def mock_db():
+    return AsyncMock()
+
+
+@pytest.fixture
+def patched_services(mock_services):
     # 엔드포인트·deps가 'from config.dependencies import get_services'로 바인딩한 get_services를 호출하므로,
     # 사용처(auth, api.deps)에서 패치해야 mock이 적용된다.
-    with patch("api.v1.endpoints.auth.get_services", return_value=mock_services), patch(
-        "api.deps.get_services", return_value=mock_services
+    with (
+        patch("api.v1.endpoints.auth.get_services", return_value=mock_services),
+        patch("api.deps.get_services", return_value=mock_services),
     ):
-        # DB 초기화를 건너뛰기 위해 lifespan을 override
-        with patch("infrastructure.database.connection.init_db", new_callable=AsyncMock):
-            from app import app
-            from infrastructure.database.connection import get_db_session
-
-            # FastAPI dependency override로 DB 세션 mock
-            mock_db = AsyncMock()
-
-            async def override_get_db_session():
-                return mock_db
-
-            app.dependency_overrides[get_db_session] = override_get_db_session
-
-            try:
-                yield TestClient(app, raise_server_exceptions=False)
-            finally:
-                app.dependency_overrides.clear()
+        yield
 
 
-class TestSignup:
-    """회원가입 엔드포인트 테스트"""
+@pytest.mark.asyncio
+async def test_signup_success(patched_services, mock_db):
+    http_request = _make_request(method="POST", path="/api/v1/auth/signup")
+    http_response = Response()
+    req = AuthSignupRequest(email="test@example.com", password="password123")
 
-    def test_signup_success(self, client):
-        """정상 회원가입"""
-        response = client.post(
-            "/api/v1/auth/signup",
-            json={
-                "email": "test@example.com",
-                "password": "password123",
-            },
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["email"] == "test@example.com"
-        assert "role" in data
-        assert "name" in data
-
-    def test_signup_sets_cookies(self, client):
-        """회원가입 시 세션/CSRF 쿠키 설정"""
-        response = client.post(
-            "/api/v1/auth/signup",
-            json={
-                "email": "test@example.com",
-                "password": "password123",
-            },
-        )
-        assert response.status_code == 200
-        assert "nexloop_session" in response.cookies
-        assert "nexloop_csrf" in response.cookies
+    data = await signup(req, http_response, http_request, session=mock_db)
+    assert data["email"] == "test@example.com"
+    assert "role" in data
+    assert "name" in data
 
 
-class TestLogin:
-    """로그인 엔드포인트 테스트"""
+@pytest.mark.asyncio
+async def test_signup_sets_cookies(patched_services, mock_db):
+    http_request = _make_request(method="POST", path="/api/v1/auth/signup")
+    http_response = Response()
+    req = AuthSignupRequest(email="test@example.com", password="password123")
 
-    def test_login_success(self, client):
-        """정상 로그인"""
-        response = client.post(
-            "/api/v1/auth/login",
-            json={
-                "email": "test@example.com",
-                "password": "password123",
-            },
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["email"] == "test@example.com"
-        assert "role" in data
-        assert "name" in data
-
-    def test_login_returns_user_fields(self, client):
-        """로그인 응답에 필수 필드 포함 확인"""
-        response = client.post(
-            "/api/v1/auth/login",
-            json={
-                "email": "test@example.com",
-                "password": "password123",
-            },
-        )
-        data = response.json()
-        assert "email" in data
-        assert "name" in data
-        assert "role" in data
+    await signup(req, http_response, http_request, session=mock_db)
+    set_cookie_headers = http_response.headers.getlist("set-cookie")
+    assert any(h.startswith(f"{SESSION_COOKIE}=") for h in set_cookie_headers)
+    assert any(h.startswith(f"{CSRF_COOKIE}=") for h in set_cookie_headers)
 
 
-class TestLogout:
-    """로그아웃 엔드포인트 테스트"""
+@pytest.mark.asyncio
+async def test_login_success(patched_services, mock_db):
+    http_request = _make_request(method="POST", path="/api/v1/auth/login")
+    http_response = Response()
+    req = AuthLoginRequest(email="test@example.com", password="password123")
 
-    def test_logout_without_session(self, client):
-        """세션 없이 로그아웃"""
-        response = client.post("/api/v1/auth/logout")
-        assert response.status_code == 200
-        data = response.json()
-        assert "message" in data
-
-    def test_logout_with_session(self, client):
-        """세션이 있는 상태에서 로그아웃"""
-        # 로그인 시 클라이언트에 세션/CSRF 쿠키가 자동 저장됨 (per-request cookies 미사용)
-        client.post(
-            "/api/v1/auth/login",
-            json={"email": "test@example.com", "password": "password123"},
-        )
-        response = client.post("/api/v1/auth/logout")
-        assert response.status_code == 200
+    data = await login(req, http_response, http_request, session=mock_db)
+    assert data["email"] == "test@example.com"
+    assert "role" in data
+    assert "name" in data
 
 
-class TestMe:
-    """현재 사용자 정보 엔드포인트 테스트"""
+@pytest.mark.asyncio
+async def test_logout_without_session(patched_services, mock_db):
+    http_request = _make_request(method="POST", path="/api/v1/auth/logout")
+    http_response = Response()
 
-    def test_me_without_auth(self, client):
-        """인증 없이 /me 접근 시 401"""
-        response = client.get("/api/v1/auth/me")
-        assert response.status_code == 401
+    data = await logout(http_response, http_request, session=mock_db)
+    assert "message" in data
 
-    def test_me_with_session(self, client):
-        """세션 쿠키로 /me 접근"""
-        # 로그인 시 클라이언트에 세션/CSRF 쿠키가 자동 저장됨 (per-request cookies 미사용)
-        client.post(
-            "/api/v1/auth/login",
-            json={"email": "test@example.com", "password": "password123"},
-        )
-        response = client.get("/api/v1/auth/me")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["email"] == "test@example.com"
-        assert "role" in data
+
+@pytest.mark.asyncio
+async def test_logout_with_session_deletes_server_session_and_clears_cookies(
+    patched_services, mock_services, mock_db
+):
+    http_request = _make_request(
+        method="POST",
+        path="/api/v1/auth/logout",
+        cookies={SESSION_COOKIE: "session-12345678-abcd", CSRF_COOKIE: "csrf-token-abc"},
+    )
+    http_response = Response()
+
+    data = await logout(http_response, http_request, session=mock_db)
+    assert data["message"] == "로그아웃 완료"
+    mock_services.auth_service.delete_session.assert_awaited()
+    set_cookie_headers = http_response.headers.getlist("set-cookie")
+    assert any(h.startswith(f"{SESSION_COOKIE}=") for h in set_cookie_headers)
+    assert any(h.startswith(f"{CSRF_COOKIE}=") for h in set_cookie_headers)
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_without_cookie_raises_401(patched_services, mock_db):
+    http_request = _make_request(method="GET", path="/api/v1/auth/me")
+    with pytest.raises(HTTPException) as exc:
+        await get_current_user(session=mock_db, request=http_request)
+    assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_me_with_session_cookie_returns_user(patched_services, mock_services, mock_db):
+    http_request = _make_request(
+        method="GET",
+        path="/api/v1/auth/me",
+        cookies={SESSION_COOKIE: "session-12345678-abcd", CSRF_COOKIE: "csrf-token-abc"},
+    )
+    user = await get_current_user(session=mock_db, request=http_request)
+    data = await me(user=user, http_request=http_request)
+    assert data["email"] == "test@example.com"
+    assert "role" in data
+    assert data["csrf_token"] == "csrf-token-abc"

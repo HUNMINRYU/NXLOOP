@@ -18,17 +18,20 @@ from schemas.requests import (
     NaverInsightBatchRequest,
     YouTubeInsightBatchRequest,
 )
+from utils.logger import log_feature_end, log_feature_fail, log_feature_start
 
 router = APIRouter()
 
 
 @router.post("/insights/upload")
-async def upload_insights(
+async def insights_upload(
     request: InsightUploadRequest,
     user: Annotated[CurrentUser, Depends(require_role(["admin", "editor"]))],
     session: Annotated[Any, Depends(get_db_session)],
 ):
+    log_feature_start("insights_upload", f"items={len(request.items)}")
     if not request.items:
+        log_feature_fail("insights_upload", "items required")
         raise HTTPException(status_code=400, detail="items required")
 
     services = get_services()
@@ -38,6 +41,7 @@ async def upload_insights(
             request.items,
             user,
         )
+        log_feature_end("insights_upload", extra_detail=f"ingested={ingested}")
     except Exception as exc:
         await record_audit_log(
             session=session,
@@ -50,6 +54,7 @@ async def upload_insights(
                 "error": str(exc),
             },
         )
+        log_feature_fail("insights_upload", str(exc))
         raise HTTPException(status_code=500, detail="Manual upload failed.") from exc
     await record_audit_log(
         session=session,
@@ -79,11 +84,12 @@ async def upload_insights(
 
 
 @router.post("/insights/external/naver")
-async def ingest_naver_insights(
+async def insights_ingest_naver(
     request: NaverInsightBatchRequest,
     user: Annotated[CurrentUser, Depends(require_role(["admin", "editor"]))],
     session: Annotated[Any, Depends(get_db_session)],
 ):
+    log_feature_start("insights_ingest_naver", request.query)
     services = get_services()
     meta = {
         "campaign_name": request.campaign_name,
@@ -103,6 +109,7 @@ async def ingest_naver_insights(
             meta,
             user,
         )
+        log_feature_end("insights_ingest_naver", extra_detail=f"items={result.get('items')}")
     except Exception as exc:
         await record_audit_log(
             session=session,
@@ -115,6 +122,7 @@ async def ingest_naver_insights(
                 "error": str(exc),
             },
         )
+        log_feature_fail("insights_ingest_naver", str(exc))
         raise HTTPException(status_code=500, detail="Naver ingest failed.") from exc
     await record_audit_log(
         session=session,
@@ -149,11 +157,12 @@ async def ingest_naver_insights(
 
 
 @router.post("/insights/external/youtube")
-async def ingest_youtube_insights(
+async def insights_ingest_youtube(
     request: YouTubeInsightBatchRequest,
     user: Annotated[CurrentUser, Depends(require_role(["admin", "editor"]))],
     session: Annotated[Any, Depends(get_db_session)],
 ):
+    log_feature_start("insights_ingest_youtube", request.query)
     services = get_services()
     meta = {
         "campaign_name": request.campaign_name,
@@ -171,6 +180,7 @@ async def ingest_youtube_insights(
             meta,
             user,
         )
+        log_feature_end("insights_ingest_youtube", extra_detail=f"items={result.get('items')}")
     except Exception as exc:
         await record_audit_log(
             session=session,
@@ -183,6 +193,7 @@ async def ingest_youtube_insights(
                 "error": str(exc),
             },
         )
+        log_feature_fail("insights_ingest_youtube", str(exc))
         raise HTTPException(status_code=500, detail="YouTube ingest failed.") from exc
     await record_audit_log(
         session=session,
@@ -274,12 +285,13 @@ async def search_insights(
     period_start: str | None = None,
     period_end: str | None = None,
 ):
+    log_feature_start("insights_search", q)
     services = get_services()
     settings = get_settings()
     data_store_id = settings.rag_data_stores.get(getattr(user, "role", ""))
 
     limit = max(1, min(int(max_results), 50))
-    results = services.discovery_engine_client.search(
+    results = await services.discovery_engine_client.search(
         q,
         max_results=limit,
         data_store_id=data_store_id,
@@ -299,25 +311,7 @@ async def search_insights(
         )
     ]
 
-    await record_audit_log(
-        session=session,
-        action="insights.search",
-        actor_email=getattr(user, "email", "unknown"),
-        actor_role=getattr(user, "role", "viewer"),
-        entity_type="insight",
-        metadata={
-            "query": q,
-            "count": len(filtered),
-            "filters": {
-                "doc_type": doc_type,
-                "campaign_name": campaign_name,
-                "channel": channel,
-                "region": region,
-                "period_start": period_start,
-                "period_end": period_end,
-            },
-        },
-    )
+    log_feature_end("insights_search", extra_detail=f"results={len(filtered)}")
     return {"query": q, "results": filtered, "count": len(filtered)}
 
 
@@ -330,6 +324,7 @@ async def insights_metrics(
     team_id: int | None = None,
     team_name: str | None = None,
 ):
+    log_feature_start("insights_metrics", f"days={days}")
     window_days = max(1, min(int(days), 90))
     cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
     stmt = (
@@ -361,6 +356,7 @@ async def insights_metrics(
         for action, count, last in rows
     ]
     total = sum(item["count"] for item in by_action)
+    log_feature_end("insights_metrics", extra_detail=f"total={total}")
     return {
         "window_days": window_days,
         "total": total,
@@ -373,8 +369,10 @@ async def insights_teams(
     user: Annotated[CurrentUser, Depends(require_role(["admin", "editor"]))],
     session: Annotated[Any, Depends(get_db_session)],
 ):
+    log_feature_start("insights_teams")
     result = await session.execute(select(Team))
     teams = result.scalars().all()
+    log_feature_end("insights_teams", extra_detail=f"count={len(teams)}")
     return {"teams": [{"id": team.id, "name": team.name} for team in teams]}
 
 
@@ -388,6 +386,7 @@ async def insights_failures(
     team_id: int | None = None,
     team_name: str | None = None,
 ):
+    log_feature_start("insights_failures", f"days={days}")
     window_days = max(1, min(int(days), 90))
     row_limit = max(1, min(int(limit), 200))
     cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
@@ -432,6 +431,7 @@ async def insights_failures(
                 "created_at": log.created_at.isoformat(),
             }
         )
+    log_feature_end("insights_failures", extra_detail=f"items={len(items)}")
     return {
         "window_days": window_days,
         "items": items,
@@ -439,11 +439,12 @@ async def insights_failures(
 
 
 @router.post("/insights/reports/daily")
-async def generate_daily_report(
+async def daily_report(
     request: DailyReportRequest,
     user: Annotated[CurrentUser, Depends(require_role(["admin", "editor"]))],
     session: Annotated[Any, Depends(get_db_session)],
 ):
+    log_feature_start("insights_daily_report", request.query)
     services = get_services()
     settings = get_settings()
     data_store_id = settings.rag_data_stores.get(getattr(user, "role", ""))
@@ -463,6 +464,7 @@ async def generate_daily_report(
             request.title,
             user,
         )
+        log_feature_end("insights_daily_report", extra_detail=f"items={result.get('items')}")
     except Exception as exc:
         await record_audit_log(
             session=session,
@@ -475,6 +477,7 @@ async def generate_daily_report(
                 "error": str(exc),
             },
         )
+        log_feature_fail("insights_daily_report", str(exc))
         raise HTTPException(status_code=500, detail="Daily report failed.") from exc
     await record_audit_log(
         session=session,

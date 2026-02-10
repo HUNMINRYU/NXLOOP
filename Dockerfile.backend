@@ -1,4 +1,5 @@
-# Backend 전용 Dockerfile
+# syntax=docker/dockerfile:1.7
+# Backend 전용 Dockerfile (Cloud Run)
 FROM python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -16,8 +17,8 @@ WORKDIR /app
 
 COPY pyproject.toml ./
 COPY README.md ./
-RUN pip install --no-cache-dir .
-RUN pip install --no-cache-dir fastapi uvicorn
+# BuildKit cache를 쓰면(Cloud Build에서 DOCKER_BUILDKIT=1) pip 설치가 반복될 때 훨씬 빨라진다.
+RUN --mount=type=cache,target=/root/.cache/pip pip install .
 
 COPY . .
 

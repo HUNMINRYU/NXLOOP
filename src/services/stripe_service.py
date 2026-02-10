@@ -56,6 +56,14 @@ class StripeService:
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def _find_user_by_id(
+        self, user_id: int, db: AsyncSession
+    ) -> User | None:
+        """ID로 사용자를 조회합니다."""
+        stmt = select(User).where(User.id == user_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def _handle_checkout_completed(
         self, session: dict, db: AsyncSession
     ) -> None:
@@ -65,10 +73,19 @@ class StripeService:
             "customer_details", {}
         ).get("email")
 
-        # 사용자 매핑: stripe_customer_id → email fallback
+        # 사용자 매핑 우선순위:
+        # 1. client_reference_id (가장 정확 - 우리가 보낸 user.id)
+        # 2. stripe_customer_id (기존 결제 이력 보유자)
+        # 3. email (최후의 수단 - 이메일 불일치 위험 있음)
         user = None
-        if customer_id:
+        client_ref = session.get("client_reference_id")
+
+        if client_ref and client_ref.isdigit():
+             user = await self._find_user_by_id(int(client_ref), db)
+
+        if not user and customer_id:
             user = await self._find_user_by_stripe_customer(customer_id, db)
+
         if not user and customer_email:
             user = await self._find_user_by_email(customer_email, db)
 

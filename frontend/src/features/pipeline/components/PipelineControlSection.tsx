@@ -33,6 +33,8 @@ interface PipelineControlSectionProps {
   handleApproval: (status: 'approved' | 'rejected') => void;
   isUpdatingApproval: boolean;
   approvalMessage: string;
+  /** Create 단계에서는 "승인/거부"가 채택(selected_outputs) 흐름과 중복되므로 숨길 수 있다. */
+  showApprovalControls?: boolean;
 }
 
 export function PipelineControlSection({
@@ -63,6 +65,7 @@ export function PipelineControlSection({
   handleApproval,
   isUpdatingApproval,
   approvalMessage,
+  showApprovalControls = true,
 }: PipelineControlSectionProps) {
   const mockSteps = useMemo(
     () => [
@@ -210,19 +213,25 @@ export function PipelineControlSection({
           </div>
         )}
       </div>
-      <div className="soft-section p-3 space-y-3">
-        <div className="flex justify-between text-sm font-medium">
-          <span>승인 상태</span>
-          <span className="capitalize text-[var(--color-primary)]">{approvalStatus || '대기 중'}</span>
-        </div>
-        {canApprove && (
-          <div className="flex gap-2">
-            <Button onClick={() => handleApproval('approved')} disabled={isUpdatingApproval}>승인</Button>
-            <Button variant="outline" onClick={() => handleApproval('rejected')} disabled={isUpdatingApproval}>거부</Button>
+      {showApprovalControls && (
+        <div className="soft-section p-3 space-y-3">
+          <div className="flex justify-between text-sm font-medium">
+            <span>승인 상태</span>
+            <span className="capitalize text-[var(--color-primary)]">{approvalStatus || '대기 중'}</span>
           </div>
-        )}
-        {approvalMessage && <p className="text-xs text-[var(--color-muted)]">{approvalMessage}</p>}
-      </div>
+          {canApprove && (
+            <div className="flex gap-2">
+              <Button onClick={() => handleApproval('approved')} disabled={isUpdatingApproval}>
+                승인
+              </Button>
+              <Button variant="outline" onClick={() => handleApproval('rejected')} disabled={isUpdatingApproval}>
+                거부
+              </Button>
+            </div>
+          )}
+          {approvalMessage && <p className="text-xs text-[var(--color-muted)]">{approvalMessage}</p>}
+        </div>
+      )}
     </div>
   );
 }

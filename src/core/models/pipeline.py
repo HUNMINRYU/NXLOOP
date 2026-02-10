@@ -241,6 +241,14 @@ class GeneratedContent(BaseModel):
 class PipelineMetrics(BaseModel):
     """파이프라인 성능 메트릭"""
 
+    # NOTE:
+    # 운영 로그/대시보드에서 "필터링(제거)"과 "선정(top_k)"이 혼동되는 경우가 잦아
+    # 원본/처리/최종 카운트와 선정률을 함께 보관한다.
+    original_count: int = Field(default=0, ge=0, description="원본 후보 건수")
+    processed_count: int = Field(default=0, ge=0, description="필터/스코어 처리 후 건수")
+    result_count: int = Field(default=0, ge=0, description="최종 선정 결과 건수(top_k)")
+    selection_rate: float = Field(default=0.0, description="선정률 (result/original, 0.0~1.0)")
+
     stage_timings: dict[str, float] = Field(
         default_factory=dict, description="단계별 소요 시간(초)"
     )

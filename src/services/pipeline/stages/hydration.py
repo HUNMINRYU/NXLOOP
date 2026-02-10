@@ -6,7 +6,7 @@ from core.interfaces.ai_service import IMarketingAIService
 from core.prompts import prompt_registry
 from services.pipeline.types import Candidate, CandidateFeatures
 from utils.cache import TTLCache
-from utils.logger import get_logger, log_llm_fail
+from utils.logger import get_logger, log_feature_end, log_feature_start, log_llm_fail
 
 logger = get_logger(__name__)
 
@@ -28,6 +28,8 @@ class FeatureHydrator:
         if not candidates:
             return []
 
+        log_feature_start("xalgo_hydration_llm", f"candidates={len(candidates)}")
+
         # 1. 캐시 확인 및 처리할 대상 선별
         to_hydrate: list[tuple[int, Candidate]] = []
         for idx, c in enumerate(candidates):
@@ -39,6 +41,7 @@ class FeatureHydrator:
                 to_hydrate.append((idx, c))
 
         if not to_hydrate:
+            log_feature_end("xalgo_hydration_llm", extra_detail="all_cached")
             return candidates
 
         # 2. 배치 처리 (5개씩 묶음)
@@ -60,6 +63,10 @@ class FeatureHydrator:
 
         success_count = sum(1 for c in candidates if c.features.keywords)
         logger.info(f"Hydration 완료: 성공={success_count}/{len(candidates)}")
+        log_feature_end(
+            "xalgo_hydration_llm",
+            extra_detail=f"cache_hit={len(candidates) - len(to_hydrate)} miss={len(to_hydrate)} success={success_count}",
+        )
         return candidates
 
     async def _analyze_batch(self, batch_items: list[tuple[int, Candidate]]) -> None:

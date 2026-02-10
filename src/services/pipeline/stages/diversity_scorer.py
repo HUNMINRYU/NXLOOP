@@ -31,11 +31,13 @@ class MultiFactorDiversityScorer:
 
     def _cosine_similarity(self, v1: list[float], v2: list[float]) -> float:
         """두 벡터 간의 코사인 유사도 계산"""
-        if not v1 or not v2: return 0.0
+        if not v1 or not v2:
+            return 0.0
         a, b = np.array(v1), np.array(v2)
         norm_a = np.linalg.norm(a)
         norm_b = np.linalg.norm(b)
-        if norm_a == 0 or norm_b == 0: return 0.0
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
         return np.dot(a, b) / (norm_a * norm_b)
 
     def apply(self, candidates: list[Candidate], history_context: dict[str, Any] | None = None) -> list[Candidate]:
@@ -82,9 +84,12 @@ class MultiFactorDiversityScorer:
             # 설명 업데이트
             if final_multiplier < 1.0:
                 reasons = []
-                if author_multiplier < 1.0: reasons.append(f"Author({author_count})")
-                if format_multiplier < 1.0: reasons.append(f"Format({format_count})")
-                if semantic_multiplier < 1.0: reasons.append("Semantic(Sim)")
+                if author_multiplier < 1.0:
+                    reasons.append(f"Author({author_count})")
+                if format_multiplier < 1.0:
+                    reasons.append(f"Format({format_count})")
+                if semantic_multiplier < 1.0:
+                    reasons.append("Semantic(Sim)")
 
                 candidate.score.weighted_components["diversity_multiplier"] = round(final_multiplier, 3)
                 candidate.score.explanation += f" [중복 패널티: {', '.join(reasons)}]"

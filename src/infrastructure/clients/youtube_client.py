@@ -9,6 +9,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 
 from config.constants import YOUTUBE_LANGUAGES
 from core.exceptions import YouTubeAPIError
+from utils.retry import retry_on_error
 from utils.cache import cached
 from utils.logger import get_logger
 
@@ -43,6 +44,7 @@ class YouTubeClient:
             return False
 
     @cached(ttl=300, cache_key_prefix="youtube")
+    @retry_on_error(max_attempts=3, base_delay=1.0, max_delay=8.0)
     def search(self, query: str, max_results: int = 3) -> list[dict]:
         """YouTube 비디오 검색"""
         try:
@@ -56,7 +58,8 @@ class YouTubeClient:
                 regionCode="KR",
                 relevanceLanguage="ko",
             )
-            response = request.execute()
+            # googleapiclient 내부 재시도(HTTP 오류 등)도 함께 사용한다.
+            response = request.execute(num_retries=3)
 
             videos = []
             for item in response.get("items", []):
@@ -75,8 +78,14 @@ class YouTubeClient:
             return videos
 
         except Exception as e:
-            logger.error(f"YouTube 검색 실패: {e}")
-            raise YouTubeAPIError(f"YouTube 검색 실패: {e}", {"query": query}) from e
+            # Broken pipe/SSL EOF 등은 기존 커넥션/세션 문제일 수 있으니 클라이언트를 리셋한다.
+            self._youtube = None
+            logger.warning(f"YouTube 검색 실패(재시도 대상): {e}")
+            raise YouTubeAPIError(
+                message="YouTube 검색에 실패했습니다.",
+                details={"query": query},
+                original_error=e,
+            ) from e
 
     @cached(ttl=600, cache_key_prefix="youtube")
     def get_video_details(self, video_id: str) -> dict | None:
@@ -197,6 +206,7 @@ class YouTubeClient:
                         }
                     )
             except YouTubeAPIError:
+                logger.warning(f"YouTube 키워드 수집 실패(스킵): {keyword}")
                 continue
 
         # 페인/게인 포인트 분석

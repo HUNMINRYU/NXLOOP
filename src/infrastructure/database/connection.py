@@ -10,6 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./data/auth.db")
 
 
+def _is_postgresql() -> bool:
+    """현재 데이터베이스가 PostgreSQL인지 확인"""
+    return DATABASE_URL.startswith("postgresql")
+
+
+
 def _ensure_sqlite_dir(database_url: str) -> None:
     if not database_url.startswith("sqlite+aiosqlite:///"):
         return
@@ -22,7 +28,39 @@ def _ensure_sqlite_dir(database_url: str) -> None:
 
 _ensure_sqlite_dir(DATABASE_URL)
 
-engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+# 운영 환경(PostgreSQL) 최적화를 위한 엔진 설정
+if _is_postgresql():
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=False,
+        future=True,
+        pool_size=20,          # 기본 연결 수
+        max_overflow=10,       # 초과 허용 연결 수
+        pool_recycle=3600,     # 연결 재사용 주기 (Cloud SQL 권장)
+        pool_pre_ping=True     # 연결 유효성 자동 체크
+    )
+else:
+    # SQLite 등 로컬 환경용 설정
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=False,
+        future=True,
+        connect_args={"timeout": 60} # 타임아웃을 1분으로 대폭 늘림
+    )
+
+    # SQLite WAL(Write-Ahead Logging) 모드는 WSL 환경에서 가끔 'database is locked' 충돌을 일으킬 수 있습니다.
+    # 안정성을 최우선으로 하여 설정을 조정합니다.
+    from sqlalchemy import event
+    @event.listens_for(engine.sync_engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        # WAL 모드 대신 안정적인 DELETE 모드 사용 (WSL 파일 시스템 호환성)
+        cursor.execute("PRAGMA journal_mode=DELETE")
+        cursor.execute("PRAGMA synchronous=FULL")
+        # 내부적인 바쁜 대기 시간 설정 (ms)
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.close()
+
 AsyncSessionFactory = async_sessionmaker(
     engine, expire_on_commit=False, class_=AsyncSession
 )
@@ -33,9 +71,6 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
-def _is_postgresql() -> bool:
-    """현재 데이터베이스가 PostgreSQL인지 확인"""
-    return DATABASE_URL.startswith("postgresql")
 
 
 def _migrate_users_columns(sync_conn):
@@ -138,6 +173,12 @@ async def init_db() -> None:
     from infrastructure.database.models import Base
 
     async with engine.begin() as conn:
+        # 운영(PostgreSQL)에서는 스키마 생성/시딩을 앱 프로세스에서 수행하지 않습니다.
+        # Cloud Run 환경에서는 동시 기동 경쟁과 콜드스타트 지연을 유발할 수 있고,
+        # 마이그레이션은 Alembic(배포 단계)로 관리하는 편이 안전합니다.
+        if _is_postgresql():
+            await conn.execute(text("SELECT 1"))
+            return
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_migrate_users_columns)
         # 기본 데이터 시딩 (Async로 실행)

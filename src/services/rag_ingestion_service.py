@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import random
 import time
@@ -9,7 +10,14 @@ from typing import Any
 from config.settings import get_settings
 from core.interfaces.chatbot import IRAGClient
 from core.models import PipelineResult
-from utils.logger import log_error, log_info, log_warning
+from utils.logger import (
+    log_error,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
+    log_info,
+    log_warning,
+)
 
 
 class RagIngestionService:
@@ -26,10 +34,13 @@ class RagIngestionService:
         results: list[dict[str, Any]],
         user: Any | None = None,
     ) -> int:
+        log_feature_start("rag_ingest_search", query)
         query = (query or "").strip()
         if not query:
+            log_feature_fail("rag_ingest_search", "empty query")
             return 0
         if not self._should_ingest_query(query):
+            log_feature_end("rag_ingest_search", extra_detail="skipped_ttl")
             return 0
 
         role = getattr(user, "role", None)
@@ -95,14 +106,18 @@ class RagIngestionService:
                 }
             )
 
-        return self._upsert_documents(docs, data_store_id=data_store_id)
+        ingested = self._upsert_documents(docs, data_store_id=data_store_id)
+        log_feature_end("rag_ingest_search", extra_detail=f"ingested={ingested}")
+        return ingested
 
     def ingest_manual_upload(
         self,
         items: list[Any],
         user: Any | None = None,
     ) -> int:
+        log_feature_start("rag_ingest_upload", f"items={len(items or [])}")
         if not items:
+            log_feature_fail("rag_ingest_upload", "empty items")
             return 0
 
         role = getattr(user, "role", None)
@@ -181,7 +196,9 @@ class RagIngestionService:
                 }
             )
 
-        return self._upsert_documents(docs, data_store_id=data_store_id)
+        ingested = self._upsert_documents(docs, data_store_id=data_store_id)
+        log_feature_end("rag_ingest_upload", extra_detail=f"ingested={ingested}")
+        return ingested
 
 
     def _should_ingest_query(self, query: str, ttl_seconds: int = 60) -> bool:
@@ -193,7 +210,9 @@ class RagIngestionService:
         return True
 
     def ingest_pipeline_result(self, result: PipelineResult) -> int:
+        log_feature_start("rag_ingest_pipeline", result.product_name if result else "unknown")
         if not result or not result.success:
+            log_feature_fail("rag_ingest_pipeline", "result missing or failed")
             return 0
 
         data_store_id = self._resolve_data_store_id('pipeline')
@@ -334,9 +353,170 @@ class RagIngestionService:
                 )
 
         if not docs:
+            log_feature_end("rag_ingest_pipeline", extra_detail="no_docs_generated")
             return 0
 
-        return self._upsert_documents(docs, data_store_id=data_store_id)
+        ingested = self._upsert_documents(docs, data_store_id=data_store_id)
+        log_feature_end("rag_ingest_pipeline", extra_detail=f"ingested={ingested}")
+        return ingested
+
+    async def ingest_pipeline_result_async(self, result: PipelineResult) -> int:
+        """async 컨텍스트에서 정확한 ingestion 카운트가 필요할 때 사용."""
+        log_feature_start(
+            "rag_ingest_pipeline", result.product_name if result else "unknown"
+        )
+        if not result or not result.success:
+            log_feature_fail("rag_ingest_pipeline", "result missing or failed")
+            return 0
+
+        data_store_id = self._resolve_data_store_id("pipeline")
+        now_iso = self._iso_or_now(result.executed_at)
+
+        strategy = result.strategy or {}
+        collected = result.collected_data
+        market_trends = collected.market_trends if collected else None
+        top_insights = []
+        if collected and collected.top_insights:
+            for item in collected.top_insights:
+                content = item.get("content") if isinstance(item, dict) else str(item)
+                if content:
+                    top_insights.append(str(content))
+
+        docs: list[dict[str, Any]] = []
+        product_name = self._coerce_text(result.product_name, limit=200)
+
+        summary = self._coerce_text(strategy.get("summary") or "", limit=2000)
+        if summary:
+            content = "\n\n".join(
+                [
+                    f"Product: {product_name}",
+                    "Summary",
+                    summary,
+                ]
+            )
+            docs.append(
+                {
+                    "id": self._make_doc_id("pipeline-summary", f"{product_name}|{now_iso}"),
+                    "struct_data": {
+                        "title": f"Pipeline Summary - {product_name}",
+                        "content": content,
+                        "source_type": "pipeline_summary",
+                        "product_name": product_name,
+                        "created_at": now_iso,
+                    },
+                }
+            )
+
+        if top_insights:
+            insights_text = "\n".join(
+                f"- {self._coerce_text(item, 500)}" for item in top_insights[:20]
+            )
+            content = "\n\n".join(
+                [
+                    f"Product: {product_name}",
+                    "Top Insights",
+                    insights_text,
+                ]
+            )
+            docs.append(
+                {
+                    "id": self._make_doc_id("pipeline-insights", f"{product_name}|{now_iso}"),
+                    "struct_data": {
+                        "title": f"Pipeline Insights - {product_name}",
+                        "content": content,
+                        "source_type": "pipeline_insights",
+                        "product_name": product_name,
+                        "created_at": now_iso,
+                    },
+                }
+            )
+
+        hooks = strategy.get("hook_suggestions")
+        if isinstance(hooks, list) and hooks:
+            hooks_text = "\n".join(
+                f"- {self._coerce_text(item, 300)}" for item in hooks[:20]
+            )
+            content = "\n\n".join(
+                [
+                    f"Product: {product_name}",
+                    "Hook Suggestions",
+                    hooks_text,
+                ]
+            )
+            docs.append(
+                {
+                    "id": self._make_doc_id("pipeline-hooks", f"{product_name}|{now_iso}"),
+                    "struct_data": {
+                        "title": f"Pipeline Hooks - {product_name}",
+                        "content": content,
+                        "source_type": "pipeline_hooks",
+                        "product_name": product_name,
+                        "created_at": now_iso,
+                    },
+                }
+            )
+
+        usp = strategy.get("unique_selling_point")
+        if isinstance(usp, list) and usp:
+            usp_text = "\n".join(f"- {self._coerce_text(item, 300)}" for item in usp[:20])
+            content = "\n\n".join(
+                [
+                    f"Product: {product_name}",
+                    "Unique Selling Points",
+                    usp_text,
+                ]
+            )
+            docs.append(
+                {
+                    "id": self._make_doc_id("pipeline-usp", f"{product_name}|{now_iso}"),
+                    "struct_data": {
+                        "title": f"Pipeline USP - {product_name}",
+                        "content": content,
+                        "source_type": "pipeline_usp",
+                        "product_name": product_name,
+                        "created_at": now_iso,
+                    },
+                }
+            )
+
+        if isinstance(market_trends, dict):
+            issues = market_trends.get("issues")
+            if isinstance(issues, list) and issues:
+                issues_text = []
+                for item in issues[:10]:
+                    if isinstance(item, dict):
+                        title = self._coerce_text(item.get("title"), 200)
+                        summary2 = self._coerce_text(item.get("summary"), 500)
+                        issues_text.append(f"- {title}: {summary2}".strip())
+                    else:
+                        issues_text.append(f"- {self._coerce_text(item, 500)}")
+                content = "\n\n".join(
+                    [
+                        f"Product: {product_name}",
+                        "Market Trends",
+                        "\n".join(issues_text),
+                    ]
+                )
+                docs.append(
+                    {
+                        "id": self._make_doc_id("pipeline-trends", f"{product_name}|{now_iso}"),
+                        "struct_data": {
+                            "title": f"Pipeline Trends - {product_name}",
+                            "content": content,
+                            "source_type": "pipeline_trends",
+                            "product_name": product_name,
+                            "created_at": now_iso,
+                        },
+                    }
+                )
+
+        if not docs:
+            log_feature_end("rag_ingest_pipeline", extra_detail="no_docs_generated")
+            return 0
+
+        ingested = await self._upsert_documents_async(docs, data_store_id=data_store_id)
+        log_feature_end("rag_ingest_pipeline", extra_detail=f"ingested={ingested}")
+        return ingested
 
     def _resolve_data_store_id(self, *roles: str | None) -> str | None:
         mapping = self._settings.rag_data_stores
@@ -346,6 +526,37 @@ class RagIngestionService:
         return self._settings.gcp.data_store_id
 
     def _upsert_documents(
+        self,
+        documents: list[dict[str, Any]],
+        data_store_id: str | None,
+    ) -> int:
+        # sync entrypoint: event loop 유무에 따라 실행/스케줄링을 분기한다.
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None:
+            # BackgroundTasks/async 컨텍스트에서 호출되면 block 하지 않고 best-effort로 스케줄링한다.
+            task = loop.create_task(
+                self._upsert_documents_async(documents, data_store_id=data_store_id)
+            )
+
+            def _done_callback(t: asyncio.Task[int]) -> None:
+                try:
+                    ing = t.result()
+                    log_info(f"RAG ingestion scheduled result: ingested={ing}")
+                except Exception as exc:  # pragma: no cover
+                    log_warning(f"RAG ingestion scheduled failed: {exc}")
+
+            task.add_done_callback(_done_callback)
+            return 0
+
+        return asyncio.run(
+            self._upsert_documents_async(documents, data_store_id=data_store_id)
+        )
+
+    async def _upsert_documents_async(
         self,
         documents: list[dict[str, Any]],
         data_store_id: str | None,
@@ -365,6 +576,7 @@ class RagIngestionService:
         if not hasattr(self._rag_client, "upsert_documents"):
             log_warning("RAG ingestion skipped: upsert_documents not supported.")
             return 0
+
         max_retries = max(1, int(self._settings.app.rag_ingestion_max_retries or 1))
         backoff = max(0.0, float(self._settings.app.rag_ingestion_backoff_seconds or 0.0))
         jitter = max(0.0, float(self._settings.app.rag_ingestion_jitter_seconds or 0.0))
@@ -373,7 +585,7 @@ class RagIngestionService:
         for attempt in range(1, max_retries + 1):
             try:
                 ingested = int(
-                    self._rag_client.upsert_documents(
+                    await self._rag_client.upsert_documents(
                         documents,
                         data_store_id=data_store_id,
                     )
@@ -382,7 +594,9 @@ class RagIngestionService:
                     if attempt > 1:
                         log_info("RAG ingestion succeeded after retry.")
                     return ingested
-                log_warning(f"RAG ingestion returned 0 items (attempt {attempt}/{max_retries}).")
+                log_warning(
+                    f"RAG ingestion returned 0 items (attempt {attempt}/{max_retries})."
+                )
             except Exception as exc:
                 last_error = exc
                 log_warning(f"RAG ingestion failed (attempt {attempt}/{max_retries}): {exc}")
@@ -392,7 +606,7 @@ class RagIngestionService:
                 if jitter:
                     sleep_for += random.uniform(0, jitter)
                 if sleep_for > 0:
-                    time.sleep(sleep_for)
+                    await asyncio.sleep(sleep_for)
 
         if last_error:
             log_error(f"RAG ingestion failed after retries: {last_error}")

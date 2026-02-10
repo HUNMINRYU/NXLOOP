@@ -8,6 +8,7 @@ import ChatbotPanel from '@/components/ChatbotPanel';
 import {
     fetchInsightFailures,
     fetchInsightMetrics,
+    getChatRemaining,
     ingestNaverInsights,
     ingestYoutubeInsights,
     searchInsights,
@@ -17,6 +18,7 @@ import type {
     InsightFailureEvent,
     InsightMetricsResponse,
 } from '@/types/insights';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export default function InsightsDashboardClient() {
     // --- States ---
@@ -36,6 +38,16 @@ export default function InsightsDashboardClient() {
     const [youtubeQuery, setYoutubeQuery] = useState('');
     const [youtubeLoading, setYoutubeLoading] = useState(false);
 
+    // --- Usage (server truth) ---
+    const tier = useAuthStore((s) => s.tier) ?? 'FREE';
+    const subscriptionStatus = useAuthStore((s) => s.subscriptionStatus) ?? 'none';
+    const [chatUsage, setChatUsage] = useState<{
+        remaining: number | null;
+        resets_at?: string;
+        limit_per_day?: number;
+    } | null>(null);
+    const [chatUsageLoading, setChatUsageLoading] = useState(false);
+
     // --- Real Chatbot State ---
     const [isChatOpen, setIsChatOpen] = useState(false);
 
@@ -43,6 +55,7 @@ export default function InsightsDashboardClient() {
     const loadDashboardData = useCallback(async () => {
         setMetricsLoading(true);
         setFailureLoading(true);
+        setChatUsageLoading(true);
         try {
             const [m, f] = await Promise.all([
                 fetchInsightMetrics(metricsDays),
@@ -50,11 +63,19 @@ export default function InsightsDashboardClient() {
             ]);
             setMetrics(m);
             setFailures(f.items);
+            try {
+                const usage = await getChatRemaining();
+                setChatUsage(usage);
+            } catch (err) {
+                console.error('Failed to load chatbot usage', err);
+                setChatUsage(null);
+            }
         } catch (err) {
             console.error('Failed to load dashboard data', err);
         } finally {
             setMetricsLoading(false);
             setFailureLoading(false);
+            setChatUsageLoading(false);
         }
     }, [metricsDays]);
 
@@ -197,17 +218,45 @@ export default function InsightsDashboardClient() {
                 </div>
 
                 {/* Top Row: KPI 카드 섹션 */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-	                    <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50 flex flex-col justify-between h-32 relative overflow-hidden">
-	                        <div>
-	                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">인사이트 수집량</p>
-	                            <div className="flex items-baseline gap-2 mt-1">
-	                                <h3 className="text-2xl font-black text-slate-900">
-	                                    {metricsLoading ? '...' : metrics?.total || 0}
-	                                </h3>
-	                                <span className="text-sm font-bold text-emerald-500">↑ 28.9%</span>
-	                            </div>
-	                        </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                    <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50 flex flex-col justify-between h-32 relative overflow-hidden">
+                        <div>
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">챗봇 사용량</p>
+                            <div className="flex items-baseline gap-2 mt-1">
+                                <h3 className="text-2xl font-black text-slate-900">
+                                    {chatUsageLoading
+                                        ? '...'
+                                        : chatUsage?.remaining === null
+                                            ? '∞'
+                                            : typeof chatUsage?.remaining === 'number'
+                                                ? chatUsage.remaining
+                                                : '-'}
+                                </h3>
+                                <span className="text-xs font-bold text-slate-500">
+                                    {tier}
+                                    {subscriptionStatus !== 'none' ? ` · ${subscriptionStatus}` : ''}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="mt-2 text-xs font-semibold text-slate-500">
+                            {chatUsage?.remaining === null
+                                ? '무제한'
+                                : chatUsage?.resets_at
+                                    ? `리필: ${new Date(chatUsage.resets_at).toLocaleString()}`
+                                    : ''}
+                        </div>
+                    </Card>
+
+                    <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50 flex flex-col justify-between h-32 relative overflow-hidden">
+                        <div>
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">인사이트 수집량</p>
+                            <div className="flex items-baseline gap-2 mt-1">
+                                <h3 className="text-2xl font-black text-slate-900">
+                                    {metricsLoading ? '...' : metrics?.total || 0}
+                                </h3>
+                                <span className="text-sm font-bold text-emerald-500">↑ 28.9%</span>
+                            </div>
+                        </div>
                         <div className="mt-2 h-8 w-full bg-emerald-50 rounded flex items-end p-1 gap-1">
                             {[40, 70, 45, 90, 65, 80, 55].map((h, i) => (
                                 <div key={i} className="flex-1 bg-emerald-400 rounded-sm" style={{ height: `${h}%` }} />

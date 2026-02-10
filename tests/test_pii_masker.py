@@ -2,7 +2,6 @@
 PII 마스킹 유틸리티 테스트
 """
 
-import pytest
 
 from utils.pii_masker import PIIType, contains_pii, detect_pii, mask_pii
 

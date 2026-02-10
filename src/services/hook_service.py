@@ -3,6 +3,9 @@ from typing import Any
 
 from utils.logger import (
     get_logger,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
     log_llm_fail,
     log_llm_request,
     log_llm_response,
@@ -253,6 +256,7 @@ class HookService:
         특정 스타일의 후킹 문구 생성.
         LLM에 제품·제품설명을 전달해 생성 요청하고, 실패 시 템플릿 폴백.
         """
+        log_feature_start("hook_generate", f"style={style} product={product.get('name')}")
         p_name = product.get("name", "제품")
         p_desc = (product.get("description") or "").strip()
         p_target = (product.get("target") or "").strip()
@@ -339,8 +343,10 @@ class HookService:
                     log_llm_response(
                         "훅 생성", f"LLM이 제품·설명 반영해 {len(hooks)}개 생성 완료"
                     )
+                    log_feature_end("hook_generate", extra_detail=f"llm_count={len(hooks)}")
                     return hooks[:count]
             except Exception as e:
+                log_feature_fail("hook_generate", f"llm_failed: {e}")
                 log_llm_fail("훅 생성", str(e))
                 logger.warning(f"LLM 훅 생성 실패, 템플릿 폴백: {e}")
 
@@ -377,6 +383,7 @@ class HookService:
             for i in range(min(count, len(templates)))
         ]
         log_success(f"{len(hooks)}개 후킹 문구 생성 완료 (템플릿)")
+        log_feature_end("hook_generate", extra_detail=f"template_count={len(hooks)}")
         return hooks
 
     # === Marketing Psychology Methods (Skill 적용) ===
@@ -455,6 +462,8 @@ class HookService:
             # AI 클라이언트 없으면 템플릿 기반으로 폴백
             return self.generate_hooks("curiosity", product, pain_points, count)
 
+        log_feature_start("hook_generate_ai", product.get("name"))
+
         prompt = f"""
 ### 🤖 Role: AI-Powered Short-form Hook Generator
 You are an advanced AI system trained on millions of high-performing short-form video ads.
@@ -509,8 +518,10 @@ Each hook should apply a DIFFERENT psychological strategy to maximize A/B testin
             hooks = [line.strip() for line in response.split("\n") if line.strip()]
             hooks = hooks[:count]
             log_llm_response("AI 훅 생성", f"{len(hooks)}개 생성 완료")
+            log_feature_end("hook_generate_ai", extra_detail=f"count={len(hooks)}")
             return hooks
         except Exception as e:
+            log_feature_fail("hook_generate_ai", str(e))
             log_llm_fail("AI 훅 생성", str(e))
             logger.warning(f"AI 후킹 생성 실패, 템플릿 사용: {e}")
             return self.generate_hooks("curiosity", product, pain_points, count)
@@ -611,6 +622,7 @@ Output ONLY a JSON list of objects:
   }}
 ]
 """
+        log_feature_start("hook_generate_ab_test", product.get("name"))
         try:
             response = await self._gemini.generate_text_async(prompt)
             # JSON 파싱
@@ -620,8 +632,11 @@ Output ONLY a JSON list of objects:
             text = response.strip()
             text = re.sub(r"^```(?:json)?\s*", "", text)
             text = re.sub(r"\s*```\s*$", "", text)
-            return json.loads(text)
+            res = json.loads(text)
+            log_feature_end("hook_generate_ab_test", extra_detail=f"count={len(res)}")
+            return res
         except Exception as e:
+            log_feature_fail("hook_generate_ab_test", str(e))
             logger.error(f"Psychological A/B test generation failed: {e}")
             return []
 
@@ -638,6 +653,8 @@ Output ONLY a JSON list of objects:
         if not self._gemini or not rag_client:
             return self.generate_hooks("curiosity", product, count=count)
 
+        log_feature_start("hook_generate_trend", product.get("name"))
+
         # 1. 트렌드/밈 검색 (RAG)
         # 제품 카테고리와 관련된 최신 트렌드를 검색
         category = product.get("category", "")
@@ -652,8 +669,14 @@ Output ONLY a JSON list of objects:
 
         rag_context_lines = []
         for q in search_queries:
-            results = rag_client.search(q, max_results=2)
-            for item in results:
+            results = await rag_client.search(q, max_results=2)
+            # 과거 구현/특정 클라이언트에서 search()가 coroutine을 그대로 반환하는 케이스를 방어한다.
+            # (운영에서 "TypeError: 'coroutine' object is not iterable"로 자주 드러남)
+            import inspect
+
+            if inspect.isawaitable(results):
+                results = await results
+            for item in (results or []):
                 title = item.get("title", "")
                 snippet = item.get("snippet", "")
                 rag_context_lines.append(f"- {title}: {snippet}")
@@ -723,10 +746,13 @@ Generate exactly {count} trendy, meme-based hooks in Korean.
 
             if final_hooks:
                 log_success(f"{len(final_hooks)}개 트렌드 훅 생성 완료")
+                log_feature_end("hook_generate_trend")
                 return final_hooks
             else:
+                log_feature_end("hook_generate_trend", extra_detail="no_trend_hooks_fallback")
                 return self.generate_hooks("social_proof", product, count=count)
 
         except Exception as e:
+            log_feature_fail("hook_generate_trend", str(e))
             logger.error(f"Trend hook generation failed: {e}")
             return self.generate_hooks("social_proof", product, count=count)

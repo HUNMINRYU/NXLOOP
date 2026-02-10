@@ -2,7 +2,6 @@
 ModelEvaluator 평가 메트릭 테스트
 """
 
-import math
 
 import pytest
 
@@ -97,7 +96,7 @@ class TestRankingMetrics:
         """상위 K개에 대한 NDCG"""
         ideal = ["a", "b", "c", "d", "e"]
         predicted = ["a", "b", "e", "d", "c"]
-        ndcg_full = evaluator.calculate_ndcg(predicted, ideal)
+        _ndcg_full = evaluator.calculate_ndcg(predicted, ideal)
         ndcg_k2 = evaluator.calculate_ndcg(predicted, ideal, k=2)
         # 상위 2개는 완벽 -> NDCG@2 = 1.0
         assert ndcg_k2 == pytest.approx(1.0)

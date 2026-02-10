@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import ChatbotPanel from './ChatbotPanel';
 import { useChatbotStatus } from '@/hooks/useChatbotUsage';
@@ -31,8 +31,16 @@ export default function ChatbotWidget() {
     const { isAuthenticated, remainingMessages, tier } = useChatbotStatus();
 
     // 분석결과·다른 페이지 등 URL 이동 시 챗봇 창 무조건 닫기
+    const prevPathnameRef = useRef(pathname);
     useEffect(() => {
-        setOpen(false);
+        if (prevPathnameRef.current !== pathname) {
+            // requestAnimationFrame을 사용하여 다음 렌더 사이클로 지연
+            const frameId = requestAnimationFrame(() => {
+                setOpen(false);
+            });
+            prevPathnameRef.current = pathname;
+            return () => cancelAnimationFrame(frameId);
+        }
     }, [pathname]);
 
     const handleLimitReached = () => {
