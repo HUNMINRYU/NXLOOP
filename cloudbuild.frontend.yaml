@@ -1,6 +1,7 @@
 steps:
   # 1. 프론트엔드 이미지 빌드 (백엔드 API URL 포함)
   - name: 'gcr.io/cloud-builders/docker'
+    env: ['DOCKER_BUILDKIT=1']
     args:
       - 'build'
       - '--build-arg'
