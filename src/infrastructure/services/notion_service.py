@@ -57,10 +57,41 @@ class NotionService(ExportPort):
                         f"executed_at: {meta.get('executed_at', '-') }",
                         f"duration_seconds: {meta.get('duration_seconds', 0)}",
                         f"upload_status: {meta.get('upload_status', '-') }",
+                        f"ai_stages_used: {', '.join(meta.get('ai_stages_used') or [])}",
                     ],
                     emoji="🤖",
                 )
             )
+            upload_errors = meta.get("upload_errors") or []
+            if upload_errors:
+                children.append(
+                    self._create_callout_block(
+                        "업로드 오류(요약)",
+                        lines=[str(e) for e in upload_errors[:5]],
+                        emoji="⚠️",
+                    )
+                )
+
+            # 파이프라인 통계(처리량/필터링/선정)
+            metrics = data.get("metrics", {}) if isinstance(data.get("metrics"), dict) else {}
+            pm = metrics.get("pipeline_metrics") if isinstance(metrics.get("pipeline_metrics"), dict) else None
+            if pm:
+                children.append(self._create_subheader_block("📊 파이프라인 처리 통계"))
+                children.append(
+                    self._create_callout_block(
+                        "처리 건수 요약",
+                        lines=[
+                            f"original_count: {pm.get('original_count', 0)}",
+                            f"removed_count: {pm.get('removed_count', pm.get('total_filtered', 0))}",
+                            f"after_filter_count: {pm.get('after_filter_count', 0)}",
+                            f"selected_count: {pm.get('selected_count', pm.get('result_count', 0))}",
+                            f"selection_rate_of_original: {pm.get('selection_rate_of_original', pm.get('selection_rate', 0.0))}",
+                            f"selection_rate_of_filtered: {pm.get('selection_rate_of_filtered', 0.0)}",
+                            f"throughput_per_sec: {pm.get('throughput_per_sec', 0.0)}",
+                        ],
+                        emoji="📈",
+                    )
+                )
 
             # 타겟 오디언스
             children.append(self._create_subheader_block("🎯 타겟 페르소나"))
@@ -114,6 +145,82 @@ class NotionService(ExportPort):
             summary = analysis.get("summary", "")
             if summary:
                 children.append(self._create_quote_block(summary))
+            insights = analysis.get("insights") or []
+            if isinstance(insights, list) and insights:
+                children.append(self._create_paragraph_block("인사이트 목록:", bold=True))
+                for item in insights[:20]:
+                    if item:
+                        children.append(self._create_bullet_block(str(item)))
+
+            # 파이프라인 동작 설명(데모/시연용)
+            children.append(self._create_subheader_block("🧩 파이프라인 설명(요약)"))
+            children.append(
+                self._create_toggle_block(
+                    "데이터 수집은 무엇을 수집하나?",
+                    [
+                        self._create_paragraph_block(
+                            "YouTube/네이버 등 채널에서 제목/설명/댓글/반응(좋아요/조회 등)과 같은 실시간 신호를 수집합니다. "
+                            "수집 단계에서 중복/스팸/무의미 데이터를 제거해 이후 단계의 노이즈를 줄입니다."
+                        )
+                    ],
+                )
+            )
+            children.append(
+                self._create_toggle_block(
+                    "시장 동향 수집은 무엇을 의미하나?",
+                    [
+                        self._create_paragraph_block(
+                            "동일 카테고리에서 최근에 반응이 커지는 주제/키워드/포맷(예: 훅 문구 패턴, 썸네일 구성)을 "
+                            "요약해 전략 생성의 입력으로 사용합니다."
+                        )
+                    ],
+                )
+            )
+            children.append(
+                self._create_toggle_block(
+                    "임베딩(Embedding) 요청은 왜 필요한가?",
+                    [
+                        self._create_paragraph_block(
+                            "텍스트를 벡터로 바꿔 '의미 유사도'를 계산하기 위해 사용합니다. "
+                            "이를 통해 중복 후보를 제거하고(다양성 확보), 유사한 성공 사례를 찾아 점수화할 수 있습니다."
+                        )
+                    ],
+                )
+            )
+            children.append(
+                self._create_toggle_block(
+                    "xalgo는 무엇인가?",
+                    [
+                        self._create_paragraph_block(
+                            "xalgo는 후보를 수집한 뒤, 전처리/하이드레이션/스코어링/다양성/선정 단계를 거쳐 "
+                            "성과 가능성이 높은 후보만 남기는 랭킹 파이프라인입니다. "
+                            "로그에는 xalgo_source, xalgo_pre_filter, xalgo_hydration, xalgo_scoring, xalgo_diversity, xalgo_selection 단계가 기록됩니다."
+                        )
+                    ],
+                )
+            )
+            children.append(
+                self._create_toggle_block(
+                    "pdwell / pshare / paction은 무엇인가?",
+                    [
+                        self._create_paragraph_block(
+                            "pdwell: 시청/체류 확률(머무를 가능성), pshare: 공유 확률, paction: 구매/클릭 등 행동 확률을 의미합니다. "
+                            "현재 구현에서는 모델/룰 기반 점수로 표현될 수 있으며, 각 점수는 '왜 그렇게 나왔는지' 근거를 breakdown으로 함께 남기는 것이 목표입니다."
+                        )
+                    ],
+                )
+            )
+            children.append(
+                self._create_toggle_block(
+                    "rag_ingest_pipeline는 무엇인가?",
+                    [
+                        self._create_paragraph_block(
+                            "파이프라인 산출물(인사이트/전략/크리에이티브)을 문서화해 검색 가능한 지식 베이스로 적재(RAG 인덱싱)하는 단계입니다. "
+                            "이후 유사 케이스 검색이나 설명 가능한 리포트 생성에 활용합니다."
+                        )
+                    ],
+                )
+            )
 
             # [NEW] 생성된 콘텐츠 (미디어)
             gen_content = data.get("generated_content", {}) if isinstance(data.get("generated_content"), dict) else {}
