@@ -256,7 +256,31 @@ class PipelineMetrics(BaseModel):
         default_factory=dict, description="단계별 처리 건수 (input/output/filtered)"
     )
     total_filtered: int = Field(default=0, description="필터링된 총 건수")
-    filtering_rate: float = Field(default=0.0, description="필터링률 (0.0~1.0)")
+    filtering_rate: float = Field(
+        default=0.0,
+        description="필터링(제거) 비율 (removed/original, 0.0~1.0) - 하위 호환용",
+    )
+    removed_count: int = Field(default=0, ge=0, description="제거된 건수(필터 단계)")
+    removed_rate: float = Field(
+        default=0.0,
+        description="제거율 (removed/original, 0.0~1.0) - filtering_rate와 동일 의미",
+    )
+    after_filter_count: int = Field(
+        default=0,
+        ge=0,
+        description="필터 후 남은 건수(=scoring 입력)",
+    )
+    selected_count: int = Field(default=0, ge=0, description="최종 선정 건수(=result_count)")
+    selection_rate_of_original: float = Field(
+        default=0.0, description="선정률 (selected/original, 0.0~1.0)"
+    )
+    selection_rate_of_filtered: float = Field(
+        default=0.0, description="선정률 (selected/after_filter, 0.0~1.0)"
+    )
+    reduction_rate_of_original: float = Field(
+        default=0.0,
+        description="축소율 (1 - selected/original, 0.0~1.0)",
+    )
     throughput_per_sec: float = Field(default=0.0, description="초당 처리량")
 
 

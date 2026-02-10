@@ -127,6 +127,17 @@ async def test_pipeline_returns_filtering_rate():
     stats = result["stats"]
     assert "filtering_rate" in stats
     assert 0.0 <= stats["filtering_rate"] <= 1.0
+    # 하위 호환: removed_rate는 filtering_rate와 동일 의미(제거율)
+    assert "removed_rate" in stats
+    assert stats["removed_rate"] == stats["filtering_rate"]
+
+    # 혼동 방지 지표: 선정률/축소율
+    assert "selection_rate_of_original" in stats
+    assert "selection_rate_of_filtered" in stats
+    assert "reduction_rate_of_original" in stats
+    assert 0.0 <= stats["selection_rate_of_original"] <= 1.0
+    assert 0.0 <= stats["selection_rate_of_filtered"] <= 1.0
+    assert 0.0 <= stats["reduction_rate_of_original"] <= 1.0
 
 
 @pytest.mark.asyncio
