@@ -76,6 +76,12 @@ knip_report*.txt
 data/
 outputs/
 docs/
+!docs/
+!docs/2026-*/
+!docs/2026-*/codex/
+!docs/2026-*/codex/**
+!docs/2026-*/cursor/
+!docs/2026-*/cursor/**
 docs/CSRF_POLICY.md
 docs/plans/
 RULES*.md
