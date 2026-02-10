@@ -80,8 +80,13 @@ export default function usePipeline() {
     if (!taskId) return;
 
     let isActive = true;
-    let intervalId: ReturnType<typeof setInterval> | undefined;
+    let pollIntervalId: ReturnType<typeof setInterval> | undefined;
+    let reconnectTimeoutId: ReturnType<typeof setTimeout> | undefined;
     let eventSource: EventSource | null = null;
+
+    // SSE 상태 플래그: SSE가 정상으로 판단되면 polling은 즉시 중단한다.
+    let isSseHealthy = false;
+    let reconnectDelayMs = 1000;
 
     const fetchResultOnce = async () => {
       if (hasFetchedResultRef.current) return;
@@ -104,7 +109,38 @@ export default function usePipeline() {
       await fetchResultOnce();
     };
 
+    const stopPolling = () => {
+      if (pollIntervalId) {
+        clearInterval(pollIntervalId);
+        pollIntervalId = undefined;
+      }
+    };
+
+    const stopReconnectTimer = () => {
+      if (reconnectTimeoutId) {
+        clearTimeout(reconnectTimeoutId);
+        reconnectTimeoutId = undefined;
+      }
+    };
+
+    const closeEventSource = () => {
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+      isSseHealthy = false;
+    };
+
+    const markSseHealthy = () => {
+      isSseHealthy = true;
+      reconnectDelayMs = 1000;
+      stopPolling();
+      stopReconnectTimer();
+    };
+
     const poll = async () => {
+      // SSE가 정상이라면 polling을 하지 않는다 (스팸 방지 + 단일 소스 유지).
+      if (isSseHealthy) return;
       try {
         const currentStatus = await fetchPipelineStatus(taskId as TaskId);
         if (!isActive) return;
@@ -112,11 +148,10 @@ export default function usePipeline() {
         
         const finished = currentStatus?.status === 'success' || currentStatus?.status === 'failed';
         if (finished) {
+          stopPolling();
+          stopReconnectTimer();
+          closeEventSource();
           await handleFinished(currentStatus);
-          if (intervalId) {
-            clearInterval(intervalId);
-            intervalId = undefined;
-          }
         }
       } catch (err: unknown) {
         if (isActive) {
@@ -127,41 +162,84 @@ export default function usePipeline() {
     };
 
     const startPolling = () => {
+      if (pollIntervalId) return;
       poll();
-      intervalId = setInterval(poll, 3000);
+      pollIntervalId = setInterval(poll, 3000);
     };
 
-    if (typeof EventSource !== 'undefined') {
+    const scheduleReconnect = () => {
+      if (!isActive) return;
+      if (typeof EventSource === 'undefined') return;
+      if (reconnectTimeoutId) return;
+
+      reconnectTimeoutId = setTimeout(() => {
+        reconnectTimeoutId = undefined;
+        connectSse();
+      }, reconnectDelayMs);
+
+      reconnectDelayMs = Math.min(reconnectDelayMs * 2, 30_000);
+    };
+
+    const connectSse = () => {
+      if (!isActive) return;
+      if (typeof EventSource === 'undefined') return;
+
+      // 기존 연결 정리 후 재연결
+      closeEventSource();
+
       try {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
         eventSource = new EventSource(`${baseUrl}/api/v1/pipeline/status-stream/${taskId}`);
+
+        // onopen 또는 첫 onmessage를 SSE 복구 성공으로 간주하고 polling을 즉시 중단한다.
+        eventSource.onopen = () => {
+          if (!isActive) return;
+          markSseHealthy();
+        };
+
         eventSource.onmessage = async (event) => {
           if (!isActive) return;
+          markSseHealthy();
+
           const streamStatus = JSON.parse(event.data) as PipelineStatus;
           const finished = streamStatus?.status === 'success' || streamStatus?.status === 'failed';
-          
+
           if (finished) {
-            if (eventSource) eventSource.close();
+            stopPolling();
+            stopReconnectTimer();
+            closeEventSource();
             await handleFinished(streamStatus);
           } else {
-             setExecutionState({ status: streamStatus });
+            setExecutionState({ status: streamStatus });
           }
         };
+
         eventSource.onerror = () => {
-          if (eventSource) eventSource.close();
-          if (!intervalId) startPolling();
+          if (!isActive) return;
+
+          // SSE가 깨지면 즉시 polling으로 폴백하고, 백오프로 SSE 재연결을 시도한다.
+          closeEventSource();
+          startPolling();
+          scheduleReconnect();
         };
       } catch {
+        closeEventSource();
         startPolling();
+        scheduleReconnect();
       }
+    };
+
+    if (typeof EventSource !== 'undefined') {
+      connectSse();
     } else {
       startPolling();
     }
 
     return () => {
       isActive = false;
-      if (eventSource) eventSource.close();
-      if (intervalId) clearInterval(intervalId);
+      stopReconnectTimer();
+      closeEventSource();
+      stopPolling();
     };
   }, [taskId, setExecutionState]);
 
