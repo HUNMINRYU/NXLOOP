@@ -311,7 +311,7 @@ class ThumbnailService:
 
         return (
             "{\n"
-            '  "model": "nano-banana",\n'
+            '  "model": "nano-banana-pro",\n'
             f'  "prompt": "{prompt_escaped}",\n'
             '  "ratio": "9:16",\n'
             '  "upscale": "Upscale photos to high resolution x2",\n'
