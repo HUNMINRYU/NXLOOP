@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 from datetime import datetime
 from time import perf_counter
@@ -47,6 +48,27 @@ def _get_task_status_and_result(task_id: str) -> tuple[dict[str, Any], dict[str,
 def _extract_collected_data(result: dict[str, Any]) -> dict[str, Any]:
     collected = result.get("collected_data") or {}
     return collected if isinstance(collected, dict) else {}
+
+
+def _ctr_prediction_cache_key(
+    *,
+    title: str | None,
+    thumbnail_description: str | None,
+    competitor_titles: list[str] | None,
+    top_insights: Any,
+) -> str:
+    """CTR 예측 결과를 고정/재사용하기 위한 결정적 cache key."""
+
+    normalized = {
+        "title": (title or "").strip(),
+        "thumbnail_description": (thumbnail_description or "").strip(),
+        "competitor_titles": sorted({(t or "").strip() for t in (competitor_titles or [])}),
+        # top_insights는 파이프라인 산출물(리스트/딕셔너리/문자열 등)일 수 있어 그대로 포함한다.
+        # key는 해시로만 쓰이므로 크기가 커도 DB에 저장되지 않는다.
+        "top_insights": top_insights,
+    }
+    payload = json.dumps(normalized, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _load_pipeline_result_dict(task_id: str) -> tuple[str, dict[str, Any], bool]:
@@ -721,27 +743,36 @@ async def predict_ctr(
     _, result = _get_task_status_and_result(request.task_id)
     collected = _extract_collected_data(result)
     top_insights = collected.get("top_insights", [])
+
+    cache_key = _ctr_prediction_cache_key(
+        title=request.title,
+        thumbnail_description=request.thumbnail_description,
+        competitor_titles=request.competitor_titles,
+        top_insights=top_insights,
+    )
+    analysis = result.setdefault("analysis", {})
+    cache = analysis.setdefault("ctr_prediction_cache", {})
+    if not isinstance(cache, dict):
+        cache = {}
+        analysis["ctr_prediction_cache"] = cache
+    if isinstance(cache, dict) and cache_key in cache:
+        cached = cache.get(cache_key) or {}
+        prediction = cached.get("prediction") if isinstance(cached, dict) else None
+        if isinstance(prediction, dict):
+            log_feature_end("ctr_predict", extra_detail=f"cache_hit key={cache_key[:12]}")
+            return {
+                "prediction": prediction,
+                "cache": {
+                    "hit": True,
+                    "key": cache_key,
+                    "stored_at": cached.get("stored_at"),
+                },
+            }
+
     log_feature_start("ctr_predict_input", f"top_insights={len(top_insights)}")
     log_feature_end("ctr_predict_input")
-    try:
-        log_feature_start("ctr_predict_ai", "predict_with_ai")
-        ai_prediction = await services.ctr_predictor.predict_with_ai(
-            title=request.title,
-            category="marketing",
-            top_insights=top_insights,
-        )
-        log_feature_end(
-            "ctr_predict_ai",
-            extra_detail=f"keys={','.join(sorted(ai_prediction.keys()))[:120]}",
-        )
-    except Exception as e:
-        log_feature_fail("ctr_predict", f"AI prediction failed: {e}")
-        log_feature_fail("ctr_predict_ai", str(e))
-        ai_prediction = services.ctr_predictor.predict_ctr(
-            title=request.title,
-            thumbnail_description=request.thumbnail_description,
-            competitor_titles=request.competitor_titles,
-        )
+    log_feature_start("ctr_predict_cache", f"cache_miss key={cache_key[:12]}")
+    log_feature_end("ctr_predict_cache")
 
     log_feature_start("ctr_predict_basic", "predict_ctr")
     basic = services.ctr_predictor.predict_ctr(
@@ -756,7 +787,27 @@ async def predict_ctr(
             f"total_score={basic.get('total_score')}"
         ),
     )
-    ai_prediction.update(
+
+    ai_prediction: dict[str, Any] = {}
+    try:
+        log_feature_start("ctr_predict_ai", "predict_with_ai")
+        ai_prediction = await services.ctr_predictor.predict_with_ai(
+            title=request.title,
+            category="marketing",
+            top_insights=top_insights,
+        )
+        log_feature_end(
+            "ctr_predict_ai",
+            extra_detail=f"keys={','.join(sorted(ai_prediction.keys()))[:120]}",
+        )
+    except Exception as e:
+        log_feature_fail("ctr_predict_ai", str(e))
+
+    # 응답 스키마는 유지하되, 점수/등급은 basic 결과를 단일 소스로 사용한다.
+    prediction: dict[str, Any] = {}
+    if isinstance(ai_prediction, dict):
+        prediction.update(ai_prediction)
+    prediction.update(
         {
             "breakdown": basic.get("breakdown", {}),
             "total_score": basic.get("total_score", 0),
@@ -768,16 +819,43 @@ async def predict_ctr(
     # 옵션: ML 모델이 로드된 경우 함께 반환(키는 기본 응답에 포함되며, 모델이 없으면 None)
     for k in ("ml_probability", "ml_predicted_ctr", "ml_prob"):
         if k in basic:
-            ai_prediction[k] = basic.get(k)
+            prediction[k] = basic.get(k)
+
+    # 결과를 저장해 같은 입력에 대해 예측을 고정한다.
+    stored_at = datetime.utcnow().isoformat()
+    cache[cache_key] = {
+        "prediction": prediction,
+        "stored_at": stored_at,
+        "input": {
+            "title": request.title,
+            "thumbnail_description": request.thumbnail_description,
+            "competitor_titles": request.competitor_titles or [],
+        },
+    }
+    analysis["ctr_prediction_latest"] = {
+        "key": cache_key,
+        "stored_at": stored_at,
+    }
+    pipeline_task_service = getattr(services, "pipeline_task_service", None)
+    if pipeline_task_service is not None:
+        try:
+            await pipeline_task_service.upsert_result(request.task_id, result)
+        except Exception:
+            # best-effort: DB 장애/권한 문제 등으로 실패해도 예측 응답은 계속 반환한다.
+            pass
     log_feature_end(
         "ctr_predict",
         extra_detail=(
-            f"predicted_ctr={ai_prediction.get('predicted_ctr')} "
-            f"grade={ai_prediction.get('grade')} "
-            f"total_score={ai_prediction.get('total_score')}"
+            f"predicted_ctr={prediction.get('predicted_ctr')} "
+            f"grade={prediction.get('grade')} "
+            f"total_score={prediction.get('total_score')} "
+            f"cache_store key={cache_key[:12]}"
         ),
     )
-    return {"prediction": ai_prediction}
+    return {
+        "prediction": prediction,
+        "cache": {"hit": False, "key": cache_key, "stored_at": stored_at},
+    }
 
 
 @router.post("/export/notion")
