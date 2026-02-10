@@ -37,6 +37,15 @@ async def health_check():
     }
 
 
+@router.head("/health")
+async def health_check_head():
+    """헬스 체크(HEAD). Cloud Run/모니터링에서 HEAD 요청이 들어와도 405가 나지 않게 한다."""
+    # HEAD 응답은 body 없이 200만 반환하면 충분하다.
+    log_feature_start("health_check", "HEAD")
+    log_feature_end("health_check")
+    return None
+
+
 @router.post("/leads")
 async def create_lead(request: LeadRequest):
     log_feature_start("leads_capture", "")
