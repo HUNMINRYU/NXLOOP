@@ -570,7 +570,14 @@ class VeoClient:
                 model=self._model_id,
                 prompt=enhanced_prompt,
                 config=GenerateVideosConfig(
-                    input_images=[image],  # type: ignore[call-arg]
+                    # google-genai의 GenerateVideosConfig는 `reference_images`를 사용한다.
+                    # (환경/버전에 따라 `input_images`가 존재할 수 있어 안전하게 분기)
+                    **(
+                        {"reference_images": [image]}
+                        if "reference_images"
+                        in getattr(GenerateVideosConfig, "model_fields", {})
+                        else {"input_images": [image]}  # type: ignore[dict-item]
+                    ),
                     aspect_ratio="9:16",
                     output_gcs_uri=output_gcs_uri,
                     duration_seconds=duration_seconds,
