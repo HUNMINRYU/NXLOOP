@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Depends, Request, Response
 
 from api.deps import CurrentUser
@@ -22,14 +24,31 @@ def _is_https(request: Request) -> bool:
     return request.url.scheme == "https"
 
 
-def _set_auth_cookies(response: Response, request: Request, session_id: str, csrf_token: str) -> None:
+def _cookie_policy(request: Request) -> tuple[bool, str]:
+    """Cloud Run/브라우저 정책을 고려한 쿠키 정책을 계산한다.
+
+    문제:
+    - Cloud Run 환경에서 프록시 헤더가 누락/변형되면 secure 판단이 false가 될 수 있다.
+    - secure=false면 SameSite=Lax로 내려가고, cross-origin fetch에서는 쿠키가 전송되지 않아
+      /auth/me 등에서 401(Authentication required)이 발생한다.
+
+    해결:
+    - Cloud Run(K_SERVICE)에서는 HTTPS를 전제로 항상 Secure + SameSite=None을 강제한다.
+    - 로컬/기타 환경에서는 기존 로직 유지.
+    """
+
+    if os.environ.get("K_SERVICE"):
+        return True, "none"
+
     secure = _is_https(request) or bool(request.headers.get("x-forwarded-proto")) or bool(
         request.headers.get("x-forwarded-host")
     )
-    # SameSite=None은 Secure가 필수다(브라우저 정책).
-    # - 운영(HTTPS): cross-site 가능성을 고려해 None 사용
-    # - 로컬(HTTP): Lax로 downgrade
     same_site = "none" if secure else "lax"
+    return secure, same_site
+
+
+def _set_auth_cookies(response: Response, request: Request, session_id: str, csrf_token: str) -> None:
+    secure, same_site = _cookie_policy(request)
 
     # "브라우저 종료 시 만료" 정책: max_age/expires를 설정하지 않는다.
     response.set_cookie(
@@ -52,8 +71,7 @@ def _set_auth_cookies(response: Response, request: Request, session_id: str, csr
 
 
 def _clear_auth_cookies(response: Response, request: Request) -> None:
-    secure = _is_https(request)
-    same_site = "none" if secure else "lax"
+    secure, same_site = _cookie_policy(request)
     response.delete_cookie(key=SESSION_COOKIE, path="/", secure=secure, samesite=same_site)
     response.delete_cookie(key=CSRF_COOKIE, path="/", secure=secure, samesite=same_site)
 
@@ -157,4 +175,3 @@ async def me(user: CurrentUser, http_request: Request):
 async def ping(user: CurrentUser):
     """세션/CSRF 설정 검증용 엔드포인트(가벼운 보호 API)."""
     return {"ok": True, "email": user.email}
-
