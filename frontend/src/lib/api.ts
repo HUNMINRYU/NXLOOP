@@ -11,6 +11,7 @@ import {
 } from '@/types/insights';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const API_PREFIX = '/api/v1';
 
 type RequestOptions = Omit<RequestInit, 'body'> & { body?: string | FormData };
 type CacheStats = {
@@ -95,7 +96,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         return {} as T;
     }
 
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const effectivePath =
+        !path.startsWith('http') && path.startsWith('/') && !path.startsWith(API_PREFIX)
+            ? `${API_PREFIX}${path}`
+            : path;
+
+    const response = await fetch(`${API_BASE_URL}${effectivePath}`, {
         ...options,
         credentials: 'include',
         headers: {
@@ -107,7 +113,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
     if (!response.ok) {
         // Only redirect to login for authenticated endpoints (not /chat for guests)
-        if (response.status === 401 && typeof window !== 'undefined' && path !== '/chat') {
+        if (response.status === 401 && typeof window !== 'undefined' && effectivePath !== `${API_PREFIX}/chat`) {
             sessionStorage.removeItem('auth-storage');
             clearStoredCsrfToken();
             try {
@@ -139,7 +145,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         if (data && typeof data === 'object' && typeof (data as { csrf_token?: string }).csrf_token === 'string') {
             setStoredCsrfToken((data as { csrf_token: string }).csrf_token);
         }
-        if (path.includes('/auth/logout')) {
+        if (effectivePath.includes('/auth/logout')) {
             clearStoredCsrfToken();
         }
         return data as T;
@@ -632,12 +638,45 @@ export function logout() {
 }
 
 /** 남은 챗봇 횟수. 비로그인/FREE는 한도·리필 시각 포함. 로그인 PRO/BUSINESS는 remaining: null(무제한). */
-export function getChatRemaining() {
-    return request<{
-        remaining: number | null;
-        resets_at?: string;
-        limit_per_day?: number;
-    }>('/chat/remaining', { method: 'GET' });
+type ChatRemainingResponse = {
+    remaining: number | null;
+    resets_at?: string;
+    limit_per_day?: number;
+};
+
+// chat_remaining은 여러 화면에서 동시에 호출되기 쉬워 백엔드 로그/트래픽을 유발한다.
+// - in-flight dedupe: 동시에 여러 번 호출되면 같은 Promise 공유
+// - TTL cache: 짧은 시간 내 반복 호출은 캐시 응답
+let _chatRemainingInFlight: Promise<ChatRemainingResponse> | null = null;
+let _chatRemainingCache:
+    | { value: ChatRemainingResponse; expiresAtMs: number }
+    | null = null;
+const CHAT_REMAINING_TTL_MS = 20_000;
+
+export function getChatRemaining(opts?: { forceRefresh?: boolean }) {
+    const forceRefresh = opts?.forceRefresh === true;
+    const now = Date.now();
+
+    if (!forceRefresh && _chatRemainingCache && _chatRemainingCache.expiresAtMs > now) {
+        return Promise.resolve(_chatRemainingCache.value);
+    }
+
+    if (!forceRefresh && _chatRemainingInFlight) {
+        return _chatRemainingInFlight;
+    }
+
+    _chatRemainingInFlight = request<ChatRemainingResponse>('/chat/remaining', {
+        method: 'GET',
+    })
+        .then((value) => {
+            _chatRemainingCache = { value, expiresAtMs: Date.now() + CHAT_REMAINING_TTL_MS };
+            return value;
+        })
+        .finally(() => {
+            _chatRemainingInFlight = null;
+        });
+
+    return _chatRemainingInFlight;
 }
 
 export function sendChatMessage(payload: { message: string; session_id: string }) {
