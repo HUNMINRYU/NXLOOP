@@ -21,7 +21,12 @@ async def test_pipeline_status_throttle_skips_start_end_but_not_fail():
     task_id = "task-test-throttle-routing-miss"
 
     with (
-        patch("api.v1.endpoints.pipeline.should_log_throttled", return_value=False),
+        # 1) pipeline_status start/end -> False (skip)
+        # 2) routing_miss fail log -> True (emit once)
+        patch(
+            "api.v1.endpoints.pipeline.should_log_throttled",
+            side_effect=[False, True],
+        ),
         patch("api.v1.endpoints.pipeline.log_feature_start") as start,
         patch("api.v1.endpoints.pipeline.log_feature_end") as end,
         patch("api.v1.endpoints.pipeline.log_feature_fail") as fail,
@@ -36,6 +41,33 @@ async def test_pipeline_status_throttle_skips_start_end_but_not_fail():
     start.assert_not_called()
     end.assert_not_called()
     fail.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_status_throttle_can_skip_routing_miss_fail_when_throttled():
+    task_id = "task-test-throttle-routing-miss-skip-fail"
+
+    with (
+        # 1) pipeline_status start/end -> False (skip)
+        # 2) routing_miss fail log -> False (throttled)
+        patch(
+            "api.v1.endpoints.pipeline.should_log_throttled",
+            side_effect=[False, False],
+        ),
+        patch("api.v1.endpoints.pipeline.log_feature_start") as start,
+        patch("api.v1.endpoints.pipeline.log_feature_end") as end,
+        patch("api.v1.endpoints.pipeline.log_feature_fail") as fail,
+        patch(
+            "api.v1.endpoints.pipeline.get_services",
+            return_value=SimpleNamespace(pipeline_task_service=None),
+        ),
+    ):
+        resp = await get_pipeline_status(task_id)
+
+    assert resp["task_id"] == task_id
+    start.assert_not_called()
+    end.assert_not_called()
+    fail.assert_not_called()
 
 
 @pytest.mark.asyncio

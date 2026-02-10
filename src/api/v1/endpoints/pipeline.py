@@ -144,7 +144,12 @@ async def get_pipeline_status(task_id: str):
 
         # Cloud Run 다중 인스턴스에서 in-memory 상태가 다른 인스턴스로 라우팅되면 404가 섞여 보일 수 있다.
         # 프론트 폴링 UX를 깨지 않도록 "routing miss" 형태로 완화한다.
-        log_feature_fail(feature, f"Task not found (routing miss?): {task_id}")
+        # routing miss는 진짜 실패라기보다 라우팅/일시 지연이므로, 에러 로그 스팸을 막기 위해 별도로 throttle 한다.
+        should_log_routing_miss = should_log_throttled(
+            f"{feature}:routing_miss:{task_id}", interval_sec=30.0
+        )
+        if should_log_routing_miss:
+            log_feature_fail(feature, f"Task not found (routing miss?): {task_id}")
         _end(extra_detail="routing_miss")
         return {
             "status": "pending",
