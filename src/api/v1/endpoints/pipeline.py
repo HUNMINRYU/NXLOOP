@@ -504,7 +504,11 @@ async def generate_video_from_selected_thumbnail_endpoint(
         product_dict = (
             product.model_dump()
             if product and hasattr(product, "model_dump")
-            else (product.__dict__ if product else {"name": product_name})
+            else (
+                product.__dict__
+                if product
+                else {"name": product_name}
+            )
         )
 
         # 2) 훅 텍스트 결정: 선택 썸네일 meta > strategy 훅 > 제품명

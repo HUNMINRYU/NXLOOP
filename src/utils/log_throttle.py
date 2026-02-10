@@ -8,16 +8,16 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 import threading
 import time
 from typing import Final
 
 _LOCK: Final[threading.Lock] = threading.Lock()
-_LAST_LOG_TS: dict[str, float] = {}
+# key 폭주가 있어도 메모리가 무한히 커지지 않도록 hard cap(LRU eviction)을 적용한다.
+_LAST_LOG_TS: "OrderedDict[str, float]" = OrderedDict()
 
-# 메모리 누수 방지용의 보수적인 상한/정리 기준 (고빈도 폴링에서도 안전하게 동작)
 _MAX_KEYS: Final[int] = 10_000
-_PRUNE_OLDER_THAN_SEC: Final[float] = 300.0  # 5분 이상 지난 키는 정리 대상
 
 
 def should_log_throttled(
@@ -41,19 +41,17 @@ def should_log_throttled(
     with _LOCK:
         last = _LAST_LOG_TS.get(key)
         if last is not None and ts - last < interval_sec:
+            # 관측 대상 키는 LRU의 최신으로 올려둔다.
+            _LAST_LOG_TS.move_to_end(key)
             return False
 
         _LAST_LOG_TS[key] = ts
-        if len(_LAST_LOG_TS) > _MAX_KEYS:
-            _prune(now_ts=ts)
+        _LAST_LOG_TS.move_to_end(key)
+
+        # Hard cap eviction: 가장 오래된 키부터 제거해 최악의 메모리/락 홀드 비용을 제한한다.
+        while len(_LAST_LOG_TS) > _MAX_KEYS:
+            _LAST_LOG_TS.popitem(last=False)
         return True
-
-
-def _prune(now_ts: float) -> None:
-    cutoff = now_ts - _PRUNE_OLDER_THAN_SEC
-    for k, v in list(_LAST_LOG_TS.items()):
-        if v < cutoff:
-            _LAST_LOG_TS.pop(k, None)
 
 
 def _reset_for_tests() -> None:
