@@ -479,7 +479,11 @@ async def main_async(args: argparse.Namespace) -> int:
     rows = await _load_approval_dataset(limit_runs=args.limit_runs)
     feedback = await _load_regression_feedback(limit_rows=args.limit_feedback)
 
-    logger.info("[FEATURE] ▶ ctr_offline_eval 시작 | runs=%s feedback=%s", len(set(r.run_id for r in rows)), len(feedback))
+    logger.info(
+        "[FEATURE] ▶ ctr_offline_eval 시작 | runs=%s feedback=%s",
+        len({r.run_id for r in rows}),
+        len(feedback),
+    )
 
     baseline = _baseline_top1_hit(rows) if rows else {"error": "no_samples"}
     cls = _groupkfold_eval_classification(rows) if rows else {"error": "no_samples"}
@@ -493,7 +497,7 @@ async def main_async(args: argparse.Namespace) -> int:
         "generated_at": generated_at,
         "dataset_counts": {
             "approval_candidates": len(rows),
-            "approval_runs": len(set(r.run_id for r in rows)),
+            "approval_runs": len({r.run_id for r in rows}),
             "regression_samples": len(feedback),
         },
         "baseline": baseline,

@@ -181,8 +181,8 @@ def train_and_save(
     artifact = CTRMLArtifact(cols=cols, pipeline=final_pipe)
 
     report = {
-        "n_samples": int(len(y)),
-        "n_features": int(len(cols)),
+        "n_samples": len(y),
+        "n_features": len(cols),
         "precision": float(sum(p_list) / len(p_list)) if p_list else 0.0,
         "recall": float(sum(r_list) / len(r_list)) if r_list else 0.0,
         "f1": float(sum(f1_list) / len(f1_list)) if f1_list else 0.0,
