@@ -24,7 +24,7 @@ from schemas.requests import (
 )
 from services.pipeline_runner import execute_pipeline_task, init_pipeline_status
 
-# from utils.file_store import ensure_output_dir  <-- keeping if used later, but it was used in update_status endpoint fallback
+# from utils.file_store import ensure_output_dir  <-- keeping if used later
 from utils.file_store import ensure_output_dir
 from utils.gcs_store import build_gcs_prefix, detect_video_ext, gcs_url_for
 from utils.logger import log_feature_end, log_feature_fail, log_feature_start
@@ -66,8 +66,10 @@ def _load_pipeline_result_dict(task_id: str) -> tuple[str, dict[str, Any], bool]
 
 @router.get("/history")
 async def get_pipeline_history(user: CurrentUser):
+    log_feature_start("pipeline_history")
     services = get_services()
     history_items = services.history_service.get_history_list()
+    pipeline_task_service = getattr(services, "pipeline_task_service", None)
 
     history_tasks = []
     for item in history_items:
@@ -101,28 +103,85 @@ async def get_pipeline_history(user: CurrentUser):
         if task_id and task_id not in tasks_by_id:
             tasks_by_id[task_id] = task
 
+    if pipeline_task_service is not None:
+        db_tasks = await pipeline_task_service.list_recent(limit=50)
+        for task in db_tasks:
+            task_id = task.get("task_id")
+            if task_id and task_id not in tasks_by_id:
+                tasks_by_id[task_id] = task
+
     tasks = list(tasks_by_id.values())
     tasks.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
+    log_feature_end("pipeline_history")
     return {"tasks": tasks}
 
 
 @router.get("/status/{task_id}")
 async def get_pipeline_status(task_id: str):
+    log_feature_start("pipeline_status", task_id)
     status = PIPELINE_STATUS.get(task_id)
     if not status:
-        raise HTTPException(status_code=404, detail="Task not found")
+        services = get_services()
+        pipeline_task_service = getattr(services, "pipeline_task_service", None)
+        if pipeline_task_service is not None:
+            db_status = await pipeline_task_service.get_status(task_id)
+            if db_status:
+                log_feature_end("pipeline_status", extra_detail="from_db")
+                return db_status
+
+        # Cloud Run 다중 인스턴스에서 in-memory 상태가 다른 인스턴스로 라우팅되면 404가 섞여 보일 수 있다.
+        # 프론트 폴링 UX를 깨지 않도록 "routing miss" 형태로 완화한다.
+        log_feature_fail("pipeline_status", f"Task not found (routing miss?): {task_id}")
+        log_feature_end("pipeline_status", extra_detail="routing_miss")
+        return {
+            "status": "pending",
+            "message": "작업 상태를 다른 인스턴스에서 처리 중입니다. 잠시 후 다시 확인하세요.",
+            "progress": {
+                "percentage": 0,
+                "message": "라우팅 재시도 중",
+                "step": "routing_miss",
+            },
+            "task_id": task_id,
+            "process_logs": [],
+        }
+    log_feature_end("pipeline_status")
     return status
 
 
 @router.get("/status-stream/{task_id}")
 async def stream_pipeline_status(task_id: str):
     async def event_generator():
+        services = get_services()
+        pipeline_task_service = getattr(services, "pipeline_task_service", None)
+        routing_miss_count = 0
         while True:
             status = PIPELINE_STATUS.get(task_id)
+            if not status and pipeline_task_service is not None:
+                status = await pipeline_task_service.get_status(task_id)
             if not status:
+                # Cloud Run 다중 인스턴스에서 아직 DB 스냅샷이 없으면 잠깐 비어 있을 수 있다.
+                # UX를 위해 짧게 재시도하며, 그동안은 routing_miss 상태를 흘려준다.
+                routing_miss_count += 1
+                if routing_miss_count <= 10:
+                    fallback = {
+                        "status": "pending",
+                        "message": "작업 상태를 다른 인스턴스에서 처리 중입니다. 잠시 후 다시 확인하세요.",
+                        "progress": {
+                            "percentage": 0,
+                            "message": "라우팅 재시도 중",
+                            "step": "routing_miss",
+                        },
+                        "task_id": task_id,
+                        "process_logs": [],
+                    }
+                    # status payload에 datetime 등이 포함될 수 있어 안전 직렬화 사용
+                    yield f"data: {PipelineTask.dumps(fallback)}\n\n"
+                    await asyncio.sleep(1)
+                    continue
                 yield "event: error\ndata: {}\n\n"
                 break
-            yield f"data: {json.dumps(status)}\n\n"
+            # status payload에 datetime 등이 포함될 수 있어 안전 직렬화 사용
+            yield f"data: {PipelineTask.dumps(status)}\n\n"
             if status.get("status") in {"success", "failed"}:
                 break
             await asyncio.sleep(1)
@@ -132,13 +191,38 @@ async def stream_pipeline_status(task_id: str):
 
 @router.get("/result/{task_id}")
 async def get_pipeline_result(task_id: str, user: CurrentUser):
+    log_feature_start("pipeline_result", task_id)
     status = PIPELINE_STATUS.get(task_id)
     result = PIPELINE_RESULTS.get(task_id)
     if not status:
         services = get_services()
+        pipeline_task_service = getattr(services, "pipeline_task_service", None)
+        if pipeline_task_service is not None:
+            db_result = await pipeline_task_service.get_result(task_id)
+            if db_result:
+                db_status = await pipeline_task_service.get_status(task_id)
+                if not db_status:
+                    executed_at = db_result.get("executed_at") or ""
+                    db_status = {
+                        "task_id": task_id,
+                        "status": "success" if db_result.get("success") else "failed",
+                        "product": db_result.get("product_name", ""),
+                        "message": "DB 결과",
+                        "progress": {
+                            "message": "DB 로드",
+                            "percentage": 100 if db_result.get("success") else 0,
+                            "step": "completed" if db_result.get("success") else "failed",
+                        },
+                        "created_at": executed_at,
+                        "updated_at": executed_at,
+                    }
+                log_feature_end("pipeline_result", extra_detail="from_db")
+                return {"status": db_status, "result": db_result}
+
         history_record = services.history_service.load_history(task_id)
         if history_record:
             record_data = history_record.model_dump()
+            log_feature_end("pipeline_result", extra_detail="from_history")
             return {
                 "status": {
                     "task_id": task_id,
@@ -155,7 +239,9 @@ async def get_pipeline_result(task_id: str, user: CurrentUser):
                 },
                 "result": record_data,
             }
+        log_feature_fail("pipeline_result", f"Task not found: {task_id}")
         raise HTTPException(status_code=404, detail="Task not found")
+    log_feature_end("pipeline_result")
     return {
         "status": status,
         "result": result,
@@ -168,8 +254,10 @@ async def trigger_pipeline(
     background_tasks: BackgroundTasks,
     user: CurrentUser,
 ):
+    log_feature_start("pipeline_run", request.product_name)
     product = get_product_by_name(request.product_name)
     if not product:
+        log_feature_fail("pipeline_run", f"Product '{request.product_name}' not found")
         raise HTTPException(
             status_code=404, detail=f"Product '{request.product_name}' not found"
         )
@@ -183,6 +271,7 @@ async def trigger_pipeline(
     if not isinstance(process_logs, list):
         process_logs = []
 
+    log_feature_end("pipeline_run", extra_detail=f"task_id={task_id}")
     return {
         "status": "triggered",
         "task_id": task_id,
@@ -200,8 +289,10 @@ async def update_pipeline_status_endpoint(
     user: Annotated[CurrentUser, Depends(require_role(["admin", "approver"]))],
     session: Annotated[Any, Depends(get_db_session)],
 ):
+    log_feature_start("pipeline_update_approval", f"{task_id} -> {request.status}")
     allowed = {"draft", "pending_review", "approved", "rejected"}
     if request.status not in allowed:
+        log_feature_fail("pipeline_update_approval", "Invalid status")
         raise HTTPException(status_code=400, detail="Invalid status")
 
     def _append_audit(result_obj: dict[str, Any]) -> None:
@@ -222,6 +313,10 @@ async def update_pipeline_status_endpoint(
         result["approval_status"] = request.status
         _append_audit(result)
         PIPELINE_RESULTS[task_id] = result
+        services = get_services()
+        pipeline_task_service = getattr(services, "pipeline_task_service", None)
+        if pipeline_task_service is not None:
+            await pipeline_task_service.upsert_result(task_id, result)
         await record_audit_log(
             session=session,
             action="update_approval_status",
@@ -231,6 +326,7 @@ async def update_pipeline_status_endpoint(
             entity_id=str(task_id),
             metadata={"status": request.status},
         )
+        log_feature_end("pipeline_update_approval", extra_detail="in_memory")
         return {"status": request.status}
 
     meta_dir = ensure_output_dir() / "metadata"
@@ -253,11 +349,16 @@ async def update_pipeline_status_endpoint(
                 entity_id=str(task_id),
                 metadata={"status": request.status},
             )
+            log_feature_end("pipeline_update_approval", extra_detail="history_file")
             return {"status": request.status}
         except Exception as e:
+            log_feature_fail("pipeline_update_approval", str(e))
             raise HTTPException(
                 status_code=500, detail="Failed to update history"
             ) from e
+
+    log_feature_fail("pipeline_update_approval", f"Task result not found: {task_id}")
+    raise HTTPException(status_code=404, detail="Task result not found")
 
 
 @router.post("/result/{task_id}/select-output")
@@ -292,6 +393,10 @@ async def select_pipeline_output_endpoint(
             result = PIPELINE_RESULTS[task_id]
             _set_selected(result)
             PIPELINE_RESULTS[task_id] = result
+            services = get_services()
+            pipeline_task_service = getattr(services, "pipeline_task_service", None)
+            if pipeline_task_service is not None:
+                await pipeline_task_service.upsert_result(task_id, result)
             log_feature_end(
                 feature,
                 perf_counter() - t0,
@@ -477,6 +582,10 @@ async def generate_video_from_selected_thumbnail_endpoint(
         # 저장
         if in_memory:
             PIPELINE_RESULTS[task_id] = data
+            services = get_services()
+            pipeline_task_service = getattr(services, "pipeline_task_service", None)
+            if pipeline_task_service is not None and isinstance(data, dict):
+                await pipeline_task_service.upsert_result(task_id, data)
         else:
             meta_dir = ensure_output_dir() / "metadata"
             file_path = meta_dir / f"{task_id}.json"
@@ -511,9 +620,11 @@ async def analyze_strategy(
     user: Annotated[Any, Depends(require_tier("PRO"))],
 ):
     services = get_services()
+    log_feature_start("analysis_strategy", request.task_id)
     status, result = _get_task_status_and_result(request.task_id)
     strategy = result.get("strategy")
     if strategy:
+        log_feature_end("analysis_strategy", extra_detail="cached")
         return {"strategy": strategy}
 
     collected = _extract_collected_data(result)
@@ -522,9 +633,10 @@ async def analyze_strategy(
     top_insights = collected.get("top_insights", [])
     product_name = status.get("product") or result.get("product_name", "")
     if not product_name:
+        log_feature_fail("analysis_strategy", "Product name not found")
         raise HTTPException(status_code=400, detail="Product name not found")
 
-    services.marketing_service.analyze_data(
+    strategy = services.marketing_service.analyze_data(
         youtube_data=youtube_data,
         naver_data=naver_data,
         product_name=product_name,
@@ -532,19 +644,28 @@ async def analyze_strategy(
     )
     if request.task_id in PIPELINE_RESULTS:
         PIPELINE_RESULTS[request.task_id]["strategy"] = strategy
+        pipeline_task_service = getattr(services, "pipeline_task_service", None)
+        if pipeline_task_service is not None:
+            await pipeline_task_service.upsert_result(
+                request.task_id, PIPELINE_RESULTS[request.task_id]
+            )
+    log_feature_end("analysis_strategy")
     return {"strategy": strategy}
 
 
 @router.post("/analysis/comments/basic")
 async def analyze_comments_basic(request: AnalysisTaskRequest):
+    log_feature_start("analysis_comments_basic", request.task_id)
     services = get_services()
     _, result = _get_task_status_and_result(request.task_id)
     collected = _extract_collected_data(result)
     youtube_data = collected.get("youtube_data", {})
     comments = youtube_data.get("comments", [])
     if not comments:
+        log_feature_fail("analysis_comments_basic", "No comments")
         raise HTTPException(status_code=400, detail="No comments available")
     analysis = services.comment_analysis_service.analyze_comments(comments)
+    log_feature_end("analysis_comments_basic")
     return {"analysis": analysis}
 
 
@@ -553,14 +674,17 @@ async def analyze_comments_deep(
     request: AnalysisTaskRequest,
     user: Annotated[Any, Depends(require_tier("PRO"))],
 ):
+    log_feature_start("analysis_comments_deep", request.task_id)
     services = get_services()
     _, result = _get_task_status_and_result(request.task_id)
     collected = _extract_collected_data(result)
     youtube_data = collected.get("youtube_data", {})
     comments = youtube_data.get("comments", [])
     if not comments:
+        log_feature_fail("analysis_comments_deep", "No comments")
         raise HTTPException(status_code=400, detail="No comments available")
     analysis = services.comment_analysis_service.analyze_with_ai(comments)
+    log_feature_end("analysis_comments_deep")
     return {"analysis": analysis}
 
 
@@ -569,27 +693,50 @@ async def predict_ctr(
     request: CTRPredictRequest,
     user: Annotated[Any, Depends(require_tier("PRO"))],
 ):
+    log_feature_start(
+        "ctr_predict",
+        f"task_id={request.task_id} title_len={len(request.title or '')} "
+        f"thumb_desc_len={len(request.thumbnail_description or '')} "
+        f"competitors={len(request.competitor_titles or [])}",
+    )
     services = get_services()
     _, result = _get_task_status_and_result(request.task_id)
     collected = _extract_collected_data(result)
     top_insights = collected.get("top_insights", [])
+    log_feature_start("ctr_predict_input", f"top_insights={len(top_insights)}")
+    log_feature_end("ctr_predict_input")
     try:
+        log_feature_start("ctr_predict_ai", "predict_with_ai")
         ai_prediction = await services.ctr_predictor.predict_with_ai(
             title=request.title,
             category="marketing",
             top_insights=top_insights,
         )
-    except Exception:
+        log_feature_end(
+            "ctr_predict_ai",
+            extra_detail=f"keys={','.join(sorted(ai_prediction.keys()))[:120]}",
+        )
+    except Exception as e:
+        log_feature_fail("ctr_predict", f"AI prediction failed: {e}")
+        log_feature_fail("ctr_predict_ai", str(e))
         ai_prediction = services.ctr_predictor.predict_ctr(
             title=request.title,
             thumbnail_description=request.thumbnail_description,
             competitor_titles=request.competitor_titles,
         )
 
+    log_feature_start("ctr_predict_basic", "predict_ctr")
     basic = services.ctr_predictor.predict_ctr(
         title=request.title,
         thumbnail_description=request.thumbnail_description,
         competitor_titles=request.competitor_titles,
+    )
+    log_feature_end(
+        "ctr_predict_basic",
+        extra_detail=(
+            f"predicted_ctr={basic.get('predicted_ctr')} grade={basic.get('grade')} "
+            f"total_score={basic.get('total_score')}"
+        ),
     )
     ai_prediction.update(
         {
@@ -600,6 +747,14 @@ async def predict_ctr(
             "ctr_range": basic.get("ctr_range", ""),
         }
     )
+    log_feature_end(
+        "ctr_predict",
+        extra_detail=(
+            f"predicted_ctr={ai_prediction.get('predicted_ctr')} "
+            f"grade={ai_prediction.get('grade')} "
+            f"total_score={ai_prediction.get('total_score')}"
+        ),
+    )
     return {"prediction": ai_prediction}
 
 
@@ -608,7 +763,9 @@ async def export_notion(
     request: NotionExportRequest,
     user: Annotated[Any, Depends(require_tier("PRO"))],
 ):
+    log_feature_start("export_notion", request.task_id or request.history_id)
     if not request.task_id and not request.history_id:
+        log_feature_fail("export_notion", "missing task_id or history_id")
         raise HTTPException(
             status_code=400, detail="task_id 또는 history_id가 필요합니다."
         )
@@ -627,6 +784,7 @@ async def export_notion(
             result = record.model_dump()
 
     if result is None:
+        log_feature_fail("export_notion", "Task result not found")
         raise HTTPException(status_code=404, detail="Task result not found")
 
     product_name = result.get("product_name", "")
@@ -664,4 +822,5 @@ async def export_notion(
         export_data,
         parent_page_id=request.parent_page_id,
     )
+    log_feature_end("export_notion")
     return {"url": notion_url}

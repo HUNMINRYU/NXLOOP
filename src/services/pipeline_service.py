@@ -41,6 +41,9 @@ from utils.gcs_store import (
 from utils.logger import (
     get_logger,
     log_error,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
     log_info,
     log_input_data,
     log_output_data,
@@ -143,9 +146,11 @@ class PipelineService:
             if progress_callback:
                 progress_callback(progress)
 
+        log_feature_start("pipeline_execute", product.get("name", "N/A"))
         try:
             # ===== Step 1: 데이터 수집 =====
             log_stage_start("Step 1: 데이터 수집", "YouTube, 네이버, 시장 트렌드 분석")
+            log_feature_start("pipeline_step_collection")
             log_input_data("제품명", product.get("name"))
             log_input_data("카테고리", product.get("category"))
 
@@ -157,12 +162,14 @@ class PipelineService:
             )
 
             # 수집 결과 로깅
+            log_feature_end("pipeline_step_collection", extra_detail=f"items={len(collected_data.youtube_videos)}")
             log_output_data("YouTube 동영상 수집", f"{len(collected_data.youtube_videos)}개")
             log_output_data("핵심 인사이트", f"{len(collected_data.top_insights or [])}개")
             log_stage_end("Step 1: 데이터 수집", f"총 {len(collected_data.youtube_videos)}개 데이터 수집")
 
             # ===== Step 2: 마케팅 전략 생성 =====
             log_stage_start("Step 2: 마케팅 전략 생성", "AI 기반 전략 분석")
+            log_feature_start("pipeline_step_strategy")
             log_input_data("수집된 인사이트", collected_data.top_insights[:3] if collected_data.top_insights else [])
 
             update_progress(PipelineStep.STRATEGY_GENERATION, "마케팅 전략 생성 중...")
@@ -175,6 +182,7 @@ class PipelineService:
             )
 
             # 전략 결과 로깅
+            log_feature_end("pipeline_step_strategy")
             log_output_data("훅 문구 제안", strategy.get("hook_suggestions", [])[:3])
             log_output_data("타겟 오디언스", strategy.get("target_audience", "N/A"))
             log_output_data("추천 스타일", strategy.get("style", "N/A"))
@@ -182,6 +190,7 @@ class PipelineService:
 
             # ===== Step 3-5: 병렬 콘텐츠 생성 =====
             log_stage_start("Step 3-5: 콘텐츠 병렬 생성", "SNS 포스팅 + 썸네일 + 비디오 동시 생성")
+            log_feature_start("pipeline_step_content")
 
             async def run_social():
                 if config.generate_social:
@@ -268,7 +277,7 @@ class PipelineService:
                         phase2_prompt = (
                             "Freeze frame hero shot of a premium "
                             f"{category} on a clean studio background. "
-                            "Soft light leaks, slow zoom in, subtle CTA text."
+                            "Soft light leaks, slow zoom in. No on-screen text, no subtitles, no logos, no watermarks."
                         )
                         log_input_data("비디오 - Phase2 프롬프트", phase2_prompt[:50])
 
@@ -291,6 +300,7 @@ class PipelineService:
 
             # Run parallel tasks
             await asyncio.gather(run_social(), run_thumbnail(), run_video())
+            log_feature_end("pipeline_step_content")
             log_stage_end("Step 3-5: 콘텐츠 병렬 생성", "모든 콘텐츠 생성 완료")
 
             # ===== Step 6: GCS 업로드 =====
@@ -325,6 +335,7 @@ class PipelineService:
                 f"☁️ GCS 업로드: {upload_status}",
                 f"⏱️ 총 소요 시간: {duration:.2f}초",
             ]
+            log_feature_end("pipeline_execute", duration_sec=duration)
             log_summary_box("파이프라인 실행 결과 요약", summary_items)
 
             log_success(f"파이프라인 실행 완료 (소요 시간: {duration:.2f}초)")
@@ -363,7 +374,7 @@ class PipelineService:
 
             if self._rag_ingestion:
                 try:
-                    self._rag_ingestion.ingest_pipeline_result(result)
+                    await self._rag_ingestion.ingest_pipeline_result_async(result)
                 except Exception as e:
                     logger.error(f"RAG ingestion failed: {e}")
 
@@ -371,6 +382,7 @@ class PipelineService:
 
         except Exception as e:
             # ===== ❌ 파이프라인 실패 =====
+            log_feature_fail("pipeline_execute", str(e))
             log_stage_fail("파이프라인 실행", str(e))
             log_error(f"    ⚠️ 오류 상세: {type(e).__name__}: {e}")
             update_progress(PipelineStep.FAILED, str(e))
