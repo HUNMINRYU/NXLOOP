@@ -1,92 +1,105 @@
+
 'use client';
 
-import Link from 'next/link';
-import { useEffect, useRef } from 'react';
-import confetti from 'canvas-confetti';
+import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/useAuthStore';
 import { fetchMe } from '@/lib/api';
+import { Button } from '@/components/ui/Button';
 
 export default function PaymentSuccessPage() {
-  const hasRun = useRef(false);
-  const setAuth = useAuthStore((s) => s.setAuth);
+    const router = useRouter();
+    const setAuth = useAuthStore((s) => s.setAuth);
+    const [status, setStatus] = useState<'syncing' | 'synced' | 'failed'>('syncing');
+    const [attempt, setAttempt] = useState(0);
+    const [tier, setTier] = useState<string>('FREE');
 
-  useEffect(() => {
-    if (hasRun.current) return;
-    hasRun.current = true;
+    useEffect(() => {
+        let cancelled = false;
 
-    // 백엔드에서 최신 구독 정보를 가져와 Zustand 스토어에 반영
-    fetchMe()
-      .then((me) => {
-        setAuth({
-          email: me.email,
-          role: me.role,
-          name: me.name,
-          tier: me.tier ?? 'PRO',
-          subscriptionStatus: me.subscription_status ?? 'active',
-        });
-      })
-      .catch(() => {
-        // 결제 성공 페이지이므로, API 호출 실패 시에도 UX를 차단하지 않습니다.
-      });
+        const syncTier = async () => {
+            // Stripe 리다이렉트가 webhook 처리보다 먼저 발생할 수 있어,
+            // tier가 PRO/BUSINESS로 바뀔 때까지 짧게 폴링한다.
+            const maxTries = 6;
+            const delayMs = 2000;
 
-    const durationMs = 1800;
-    const startedAt = Date.now();
+            for (let i = 1; i <= maxTries; i++) {
+                if (cancelled) return;
+                setAttempt(i);
 
-    const interval = window.setInterval(() => {
-      const elapsed = Date.now() - startedAt;
-      const t = Math.min(1, elapsed / durationMs);
+                try {
+                    const me = await fetchMe();
+                    const nextTier = me.tier ?? 'FREE';
+                    setTier(nextTier);
+                    setAuth({
+                        email: me.email,
+                        role: me.role,
+                        name: me.name,
+                        tier: nextTier,
+                        subscriptionStatus: me.subscription_status ?? 'none',
+                    });
 
-      confetti({
-        particleCount: Math.floor(90 * (1 - t) + 20),
-        spread: 70,
-        startVelocity: 45,
-        ticks: 220,
-        zIndex: 9999,
-        origin: { x: 0.15, y: 0.6 },
-      });
-      confetti({
-        particleCount: Math.floor(90 * (1 - t) + 20),
-        spread: 70,
-        startVelocity: 45,
-        ticks: 220,
-        zIndex: 9999,
-        origin: { x: 0.85, y: 0.6 },
-      });
+                    if (nextTier === 'PRO' || nextTier === 'BUSINESS') {
+                        setStatus('synced');
+                        return;
+                    }
+                } catch {
+                    // fetchMe 실패는 일시적일 수 있으므로 폴링을 계속한다.
+                }
 
-      if (elapsed >= durationMs) {
-        window.clearInterval(interval);
-      }
-    }, 260);
+                await new Promise((r) => setTimeout(r, delayMs));
+            }
 
-    return () => window.clearInterval(interval);
-  }, [setAuth]);
+            if (!cancelled) setStatus('failed');
+        };
 
-  return (
-    <main className="min-h-screen bg-[var(--color-background)]">
-      <div className="mx-auto max-w-3xl px-6 py-20">
-        <div className="soft-card p-8 text-center">
-          <div className="mx-auto inline-flex items-center rounded-full bg-[var(--color-accent-light)] px-4 py-2 text-sm font-bold text-[var(--color-foreground)]">
-            결제 완료
-          </div>
+        void syncTier();
 
-          <h1 className="mt-6 text-2xl font-black tracking-tight text-[var(--color-foreground)] sm:text-3xl">
-            결제 성공! Professional 등급으로 업그레이드되었습니다.
-          </h1>
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-[var(--color-muted)] sm:text-base">
-            구독 정보가 서버에서 확인되어 계정에 반영되었습니다. 모든 PRO 기능을
-            자유롭게 이용하세요.
-          </p>
+        return () => {
+            cancelled = true;
+        };
+    }, [setAuth, router]);
 
-          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-            <Link href="/" className="soft-button-primary justify-center">
-              메인으로 돌아가기
-            </Link>
-            <Link href="/pricing" className="soft-button-secondary justify-center">
-              요금제 다시 보기
-            </Link>
-          </div>
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--color-background)] p-4 text-center">
+            <div className="bg-white p-8 rounded-[var(--radius-xl)] shadow-[var(--shadow-soft-lg)] max-w-md w-full border border-[var(--color-border)]">
+                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">
+                    🎉
+                </div>
+                <h1 className="text-2xl font-bold text-[var(--color-foreground)] mb-2">
+                    결제가 완료되었습니다!
+                </h1>
+                <p className="text-[var(--color-muted)] mb-8">
+                    PRO 멤버십이 활성화되었습니다.<br />
+                    이제 무제한 챗봇과 파이프라인 기능을 사용하실 수 있습니다.
+                </p>
+                <div className="mb-6 text-sm text-[var(--color-muted)]">
+                    {status === 'syncing' && (
+                        <div>
+                            구독 정보 동기화 중... ({attempt}/6)<br />
+                            현재 등급: <span className="font-bold text-[var(--color-foreground)]">{tier}</span>
+                        </div>
+                    )}
+                    {status === 'synced' && (
+                        <div className="text-green-700 font-semibold">
+                            동기화 완료되었습니다.
+                        </div>
+                    )}
+                    {status === 'failed' && (
+                        <div className="text-red-700 font-semibold">
+                            구독 정보 동기화가 지연되고 있습니다. 잠시 후 요금제 페이지에서 다시 확인해주세요.
+                        </div>
+                    )}
+                </div>
+                <Button 
+                    variant="default"
+                    size="lg" 
+                    className="w-full"
+                    onClick={() => router.push('/pricing')}
+                >
+                    요금제 확인하기
+                </Button>
+            </div>
         </div>
-      </div>
-    </main>
-  );
+    );
 }

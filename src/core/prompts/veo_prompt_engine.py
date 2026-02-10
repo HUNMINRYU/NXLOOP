@@ -65,6 +65,8 @@ class VeoPromptEngine:
 12. **On-screen Dialogue:** None
 13. **Constraints:** 9:16 Vertical, 8 seconds.
 
+NOTE: For this project, do not include any on-screen text and do not include spoken words. Set Voice-over to "None".
+
 #### **[Phase 2: The Brand Stamp (Extension: 8s-12s)]** -> Put in `phase2_prompt`
 1.  **Scene/Lighting:** Maintain Phase 1 environment.
 2.  **Subject:** Product Hero Shot (Static).
@@ -72,6 +74,8 @@ class VeoPromptEngine:
 4.  **Action (8-12s):** Freeze frame aesthetic. Subtle light leaks only.
 5.  **Voice-over:** "[Brand Tagline]"
 6.  **Constraints:** Extend to 12s.
+
+NOTE: For this project, do not include any spoken words. Set Voice-over to "None".
 
 ---
 
@@ -94,6 +98,8 @@ class VeoPromptEngine:
 11. **Voice-over:** "[Hook Text]" (Mood: [Determined Voice Mood])
 12. **On-screen Dialogue:** None
 13. **Constraints:** 9:16 Vertical, 8 seconds.
+
+NOTE: For this project, do not include any on-screen text and do not include spoken words. Set Voice-over to "None".
 """
 
     @staticmethod

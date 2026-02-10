@@ -19,7 +19,12 @@ from utils.gcs_store import (
     detect_video_ext,
     gcs_url_for,
 )
-from utils.logger import get_logger
+from utils.logger import (
+    get_logger,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
+)
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -27,36 +32,46 @@ router = APIRouter()
 
 @router.get("/thumbnail/styles")
 async def get_thumbnail_styles():
+    log_feature_start("content_get_thumbnail_styles")
     services = get_services()
-    return {"styles": services.thumbnail_service.get_available_styles()}
+    styles = services.thumbnail_service.get_available_styles()
+    log_feature_end("content_get_thumbnail_styles")
+    return {"styles": styles}
 
 
 @router.post("/hooks/generate")
 async def generate_hooks(request: HookGenerateRequest):
+    log_feature_start("content_generate_hooks", f"{request.product_name} style={request.style}")
     services = get_services()
     product = get_product_by_name(request.product_name)
     if not product:
+        log_feature_fail("content_generate_hooks", f"Product '{request.product_name}' not found")
         raise HTTPException(
             status_code=404, detail=f"Product '{request.product_name}' not found"
         )
     product_dict = (
         product.model_dump() if hasattr(product, "model_dump") else product.__dict__
     )
-    if request.style == "trend":
-        hooks = await services.hook_service.generate_trend_hooks(
-            product=product_dict,
-            count=request.count,
-            rag_client=services.discovery_engine_client,
-            length=request.length,
-        )
-    else:
-        hooks = services.hook_service.generate_hooks(
-            style=request.style,
-            product=product_dict,
-            count=request.count,
-            length=request.length,
-        )
-    return {"hooks": hooks}
+    try:
+        if request.style == "trend":
+            hooks = await services.hook_service.generate_trend_hooks(
+                product=product_dict,
+                count=request.count,
+                rag_client=services.discovery_engine_client,
+                length=request.length,
+            )
+        else:
+            hooks = services.hook_service.generate_hooks(
+                style=request.style,
+                product=product_dict,
+                count=request.count,
+                length=request.length,
+            )
+        log_feature_end("content_generate_hooks", extra_detail=f"count={len(hooks)}")
+        return {"hooks": hooks}
+    except Exception as e:
+        log_feature_fail("content_generate_hooks", str(e))
+        raise
 
 
 @router.post("/thumbnail/compare-styles")
@@ -65,9 +80,11 @@ async def generate_thumbnail_compare_styles(
     user: Annotated[Any, Depends(require_tier("PRO"))],
 ):
     """같은 훅으로 여러 스타일 썸네일을 한 번에 생성해 비교용으로 반환"""
+    log_feature_start("content_thumbnail_compare", request.product_name)
     services = get_services()
     product = get_product_by_name(request.product_name)
     if not product:
+        log_feature_fail("content_thumbnail_compare", f"Product '{request.product_name}' not found")
         raise HTTPException(
             status_code=404, detail=f"Product '{request.product_name}' not found"
         )
@@ -141,6 +158,7 @@ async def generate_thumbnail_compare_styles(
             }
         )
 
+    log_feature_end("content_thumbnail_compare", extra_detail=f"items={len(results)}")
     return {
         "items": results,
         "hook_text": common_hook
@@ -152,13 +170,17 @@ async def generate_thumbnail_compare_styles(
 @router.get("/hooks/styles")
 async def get_hook_styles():
     """썸네일/비디오용 훅 전략 9종 (key, name=Key (한글), emoji, description)"""
-    return {"styles": get_services().hook_service.get_available_styles()}
+    log_feature_start("content_get_hook_styles")
+    styles = get_services().hook_service.get_available_styles()
+    log_feature_end("content_get_hook_styles")
+    return {"styles": styles}
 
 
 @router.get("/video/presets")
 async def get_video_presets():
+    log_feature_start("content_get_video_presets")
     hook_styles = get_services().hook_service.get_available_styles()
-    return {
+    presets = {
         "hook_styles": hook_styles,
         "camera_movements": AdvancedPromptBuilder.get_camera_movements(),
         "compositions": AdvancedPromptBuilder.get_compositions(),
@@ -167,6 +189,8 @@ async def get_video_presets():
         "durations": [4, 6, 8],
         "resolutions": ["1080p", "720p"],
     }
+    log_feature_end("content_get_video_presets")
+    return presets
 
 
 @router.post("/video/generate")
@@ -174,9 +198,11 @@ async def generate_video(
     request: VideoGenerateRequest,
     user: Annotated[Any, Depends(require_tier("PRO"))],
 ):
+    log_feature_start("content_video_generate", request.product_name)
     services = get_services()
     product = get_product_by_name(request.product_name)
     if not product:
+        log_feature_fail("content_video_generate", f"Product '{request.product_name}' not found")
         raise HTTPException(
             status_code=404, detail=f"Product '{request.product_name}' not found"
         )
@@ -269,11 +295,14 @@ async def generate_video(
             content_type="video/mp4" if ext == ".mp4" else "application/octet-stream",
         )
         url = gcs_url_for(storage, gcs_path)
+        log_feature_end("content_video_generate", extra_detail=f"gcs_path={gcs_path}")
         return {"url": url, "gcs_path": gcs_path, "prompt": prompt}
 
     if isinstance(video_result, str):
+        log_feature_end("content_video_generate", extra_detail="url_only")
         return {"url": video_result, "prompt": prompt}
 
+    log_feature_fail("content_video_generate", "Video generation failed")
     raise HTTPException(status_code=500, detail="Video generation failed")
 
 
@@ -282,6 +311,7 @@ async def extend_video(
     request: VideoExtendRequest,
     user: Annotated[Any, Depends(require_tier("PRO"))],
 ):
+    log_feature_start("content_video_extend", request.video_uri)
     services = get_services()
     from config.settings import get_settings
 
@@ -321,6 +351,8 @@ async def extend_video(
         return {"url": url, "gcs_path": gcs_path, "prompt": request.prompt}
 
     if isinstance(video_result, str):
+        log_feature_end("content_video_extend", extra_detail="url_only")
         return {"url": video_result, "prompt": request.prompt}
 
+    log_feature_fail("content_video_extend", "Video extension failed")
     raise HTTPException(status_code=500, detail="Video extension failed")

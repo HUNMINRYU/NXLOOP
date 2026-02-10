@@ -116,6 +116,16 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
 
 
+class StripeCreateCheckoutSessionRequest(BaseModel):
+    """Stripe Checkout Session 생성 요청.
+
+    현재는 PRO 결제만 Checkout으로 처리하고,
+    BUSINESS는 Contact Sales(세일즈 문의) 플로우로 분리한다.
+    """
+
+    plan: Literal["PRO", "BUSINESS"] = "PRO"
+
+
 class ApprovalStatusRequest(BaseModel):
     status: str = Field(..., description="approval status")
 

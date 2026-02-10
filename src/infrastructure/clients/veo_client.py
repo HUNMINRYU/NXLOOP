@@ -800,7 +800,7 @@ Audio: cinematic bass hit followed by subtle ambient synth.
 Create a {duration}-second vertical (9:16) short-form marketing video.
 
 SUBJECT: {product} - a premium {category} product
-ACTION: Hook viewer in first 2 seconds → Demonstrate key benefit → Subtle call-to-action
+ACTION: Hook viewer in first 2 seconds → Demonstrate key benefit → End on a clean hero shot
 STYLE: Film-like quality with slight grain, professional commercial look
 MOOD: {mood}
 
@@ -809,7 +809,7 @@ RESOLUTION: 1080p, 24fps
 
 AUDIO: {audio_style}
 
-HOOK TEXT (spoken in first 3 seconds): "{hook}"
+CONSTRAINTS: ZERO on-screen text, ZERO subtitles/captions, ZERO typography, ZERO logos, ZERO watermarks. No spoken words (voice-over: none).
     """.strip()
 
     def generate_marketing_prompt(

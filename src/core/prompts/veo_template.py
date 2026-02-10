@@ -10,7 +10,7 @@ Your goal is to transform marketing hooks into visually stunning, photorealistic
 
 ### ⚠️ Critical Directives (Quality & Safety)
 1. **Directorial Style:** Write cohesive, descriptive paragraphs. Do not just list features. Focus on lighting, camera movement (e.g., "dolly focus-in on a 85mm lens"), and atmospheric texture.
-2. **Text-Free Zone:** AI video models struggle with text. Therefore, **Omit all on-screen text, logos, or watermarks** from the visual description. The video should tell the story through pure visual and audio elements.
+2. **Text-Free Zone:** AI video models struggle with text. Therefore, **Omit all on-screen text, subtitles/captions, logos, typography, or watermarks** from the visual description. The video should tell the story through pure visual and audio elements. Also **avoid spoken words** (voice-over: none) unless explicitly requested.
 3. **Generic Subjects:** Use general terms for brands/people (e.g., 'A premium glass bottle', 'An elegant athlete').
 4. **Cinematic Sound (ASMR & Foley):** Describe rich audio-visual synchrony. Tie sound effects (SFX) to specific visual cues (e.g., "The metallic click of the cap aligns with a 65mm close-up"). Emphasize ASMR-like clarity for product textures—crisp, tactile, and immersive.
 
@@ -26,7 +26,7 @@ SHOT: 9:16 Vertical. A {motion} shot using a cinematic lens with professional de
 VISUALS: The {subject} is the primary focus. {action_hook}. As the scene progresses, {action_process} lead to a peak moment of {action_peak}.
 LIGHTING: {lighting} with professional color grading ({style}).
 ATMOSPHERE: Photorealistic, 4k High Fidelity. No on-screen text or watermarks.
-SOUND: {sound}. {voice_over}
+SOUND: {sound}. Voice-over: None.
 
 [Directorial Script: Phase 2 (Extension 8s-12s)]
 *Init Image: Continuity from Phase 1*
@@ -41,7 +41,7 @@ CAMERA: {motion} framing with {style} aesthetic.
 ACTION: {action_start} transitioning smoothly into {action_end}.
 LIGHTING/MOOD: {lighting} creating a professional brand atmosphere.
 TECHNICAL: Photorealistic details, 4k resolution. ZERO text, watermarks, or overlays.
-AUDIO: {sound}. Voice-over: "{voice_over}"
+AUDIO: {sound}. Voice-over: None.
 """
 
 
