@@ -55,7 +55,6 @@ const analyticsItems = {
         },
     ],
     right: [
-        { title: 'Audience', subtitle: 'Viewer response and trend analysis report', href: '/analytics/audience' },
         { title: 'Insights Hub', subtitle: 'Unified insight search and daily reports', href: '/insights' },
     ],
 };
