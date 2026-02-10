@@ -765,6 +765,10 @@ async def predict_ctr(
             "ctr_range": basic.get("ctr_range", ""),
         }
     )
+    # 옵션: ML 모델이 로드된 경우 함께 반환(키는 기본 응답에 포함되며, 모델이 없으면 None)
+    for k in ("ml_probability", "ml_predicted_ctr", "ml_prob"):
+        if k in basic:
+            ai_prediction[k] = basic.get(k)
     log_feature_end(
         "ctr_predict",
         extra_detail=(

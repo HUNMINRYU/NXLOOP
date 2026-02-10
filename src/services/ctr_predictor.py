@@ -12,6 +12,7 @@ Two-Tower 아키텍처:
 from __future__ import annotations
 
 import math
+import os
 from typing import Any
 
 import numpy as np
@@ -67,6 +68,16 @@ class CTRPredictor:
         self._evaluator = ModelEvaluator()
         # Two-Tower: 성공 사례 임베딩 캐시
         self._success_embeddings: list[np.ndarray] | None = None
+        # 학습된 ML 모델(선택): 없으면 기존 rule+embedding으로 동작한다.
+        self._trained_model = None
+        model_path = (os.getenv("CTR_MODEL_PATH") or "").strip()
+        if model_path:
+            try:
+                from services.ctr_ml_training import load_ctr_ml_artifact
+
+                self._trained_model = load_ctr_ml_artifact(model_path)
+            except Exception as e:
+                logger.warning("CTR 학습 모델 로드 실패(무시하고 fallback): %s", e)
 
     def predict_ctr(
         self,
@@ -108,6 +119,19 @@ class CTRPredictor:
         # CTR 범위로 변환 (2% ~ 15%)
         predicted_ctr = 2 + (total_score / 100) * 13
 
+        ml_prob: float | None = None
+        ml_predicted_ctr: float | None = None
+        if self._trained_model is not None:
+            try:
+                from services.ctr_ml_training import flatten_ctr_features
+
+                flat = flatten_ctr_features(features)
+                ml_prob = float(self._trained_model.predict_proba(flat))
+                # ML 확률(0~1)을 CTR 범위(2~15%)로 단순 매핑(발표/비교용)
+                ml_predicted_ctr = 2 + ml_prob * 13
+            except Exception as e:
+                logger.warning("CTR ML 예측 실패, fallback 유지: %s", e)
+
         result = {
             "predicted_ctr": round(predicted_ctr, 2),
             "ctr_range": self._get_ctr_range(predicted_ctr),
@@ -118,6 +142,13 @@ class CTRPredictor:
             "recommendations": self._generate_recommendations(scores),
             "grade": self._get_grade(total_score),
         }
+        # 기존 응답 호환: 키는 항상 포함하되, 모델이 없으면 None
+        result["ml_probability"] = round(ml_prob, 6) if ml_prob is not None else None
+        result["ml_predicted_ctr"] = (
+            round(ml_predicted_ctr, 2) if ml_predicted_ctr is not None else None
+        )
+        # 신규 alias: 요구사항(ml_prob) 대응
+        result["ml_prob"] = result["ml_probability"]
 
         log_success(f"CTR 예측 완료: {result['predicted_ctr']}% ({result['grade']})")
         self._evaluator.log_prediction(
