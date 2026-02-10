@@ -3,11 +3,13 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from alembic import command
 from api.middleware.csrf import csrf_protect
 from api.v1.api import api_router
 from config.cors import resolve_cors_origins
@@ -25,9 +27,32 @@ async def lifespan(app: FastAPI):
     log_feature_start("app_startup", "lifespan")
     settings = get_settings()
     settings.setup_environment()
+
+    # Cloud Run 웹 프로세스 시작 시점에 마이그레이션을 자동 실행하면
+    # 콜드스타트 지연/동시 실행 경쟁(race)이 발생할 수 있습니다.
+    # 기본값은 비활성화하고, 필요 시 ENV로만 켭니다.
+    if os.environ.get("AUTO_MIGRATE_ON_STARTUP", "0") == "1":
+        try:
+            logger.info("Running pending database migrations...")
+            alembic_cfg = Config("alembic.ini")
+            # alembic.ini의 sqlalchemy.url을 현재 DATABASE_URL로 덮어쓰기 (비동기 드라이버 제거)
+            db_url = settings.app.database_url.replace("+aiosqlite", "").replace(
+                "+asyncpg", ""
+            )
+            if not db_url:
+                db_url = "sqlite:///./data/auth.db"  # Fallback
+            alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+            command.upgrade(alembic_cfg, "head")
+            logger.info("Database migrations completed.")
+        except Exception as e:
+            logger.error(f"Migration failed: {e}")
+            if os.environ.get("K_SERVICE"):  # Cloud Run 환경에서는 마이그레이션 실패 시 앱 중단
+                raise RuntimeError("Database migration failed in production") from e
+
     await init_db()
     logger.info("Application startup completed.")
     log_feature_end("app_startup")
+
     yield
     # Shutdown
     log_feature_start("app_shutdown", "lifespan")
@@ -122,8 +147,3 @@ if FRONTEND_DIST_DIR.exists():
     app.mount(
         "/", SPAStaticFiles(directory=FRONTEND_DIST_DIR, html=True), name="frontend"
     )
-
-
-@app.get("/health")  # Alias for root health check if SPA doesn't catch it
-async def root_health():
-    return {"status": "ok", "message": "Nexloop API is running (Root)"}

@@ -17,6 +17,17 @@ import { HookStrategy, ThumbnailStyle, VideoPresets } from '@/types/api';
 import { fetchPipelineResult, generateVideoFromSelectedThumbnail, predictCtr, selectPipelineOutput } from '@/lib/api';
 import { useEffect, useMemo, useState } from 'react';
 import { usePipelineStore } from '@/store/usePipelineStore';
+import { asTaskId, type TaskId } from '@/types/common';
+
+type UnknownRecord = Record<string, unknown>;
+
+function isRecord(v: unknown): v is UnknownRecord {
+    return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function asString(v: unknown): string | undefined {
+    return typeof v === 'string' ? v : undefined;
+}
 
 const slugs: Record<string, { title: string; subtitle: string }> = {
     'data-source': { title: 'Data Source', subtitle: 'Trend and information collection' },
@@ -58,8 +69,17 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
         initialApprovalStatus: pipeline.pipelineResult?.result?.approval_status,
     });
 
-    const taskId = (pipeline.taskId || pipeline.pipelineResult?.task_id || '') as any;
-    const selectedOutputs = (pipeline.pipelineResult?.result as any)?.selected_outputs as Record<string, any> | undefined;
+    type SelectedOutputItem = { url?: string } & UnknownRecord;
+    type SelectedOutputs = { thumbnail?: SelectedOutputItem; video?: SelectedOutputItem } & UnknownRecord;
+
+    const taskId: TaskId = asTaskId(String(pipeline.taskId || pipeline.pipelineResult?.task_id || ''));
+    const selectedOutputs = useMemo<SelectedOutputs | undefined>(() => {
+        const result = pipeline.pipelineResult?.result as unknown;
+        if (!isRecord(result)) return undefined;
+        const so = result['selected_outputs'];
+        if (!isRecord(so)) return undefined;
+        return so as SelectedOutputs;
+    }, [pipeline.pipelineResult]);
 
     const [thumbScores, setThumbScores] = useState<
         Record<string, { predictedCtr?: number; totalScore?: number; grade?: string }>
@@ -74,19 +94,22 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
 
     const thumbCandidates = useMemo<ThumbCandidate[]>(() => {
         const out: ThumbCandidate[] = [];
-        const content = pipeline.pipelineResult?.result?.generated_content as any;
-        if (!content) return out;
+        const content = pipeline.pipelineResult?.result?.generated_content as unknown;
+        if (!isRecord(content)) return out;
 
-        if (Array.isArray(content?.multi_thumbnails)) {
-            for (const item of content.multi_thumbnails) {
-                if (!item) continue;
-                const url = item.url || item.thumbnail_url || item.image_url;
+        const multi = content['multi_thumbnails'];
+        if (Array.isArray(multi)) {
+            for (const it of multi) {
+                if (!isRecord(it)) continue;
+                const url =
+                    asString(it['url']) || asString(it['thumbnail_url']) || asString(it['image_url']);
                 if (!url) continue;
-                out.push({ url, hookText: item.hook_text, style: item.style });
+                out.push({ url, hookText: asString(it['hook_text']), style: asString(it['style']) });
             }
         }
-        if (typeof content?.thumbnail_url === 'string' && content.thumbnail_url) {
-            out.unshift({ url: content.thumbnail_url, hookText: undefined, style: undefined });
+        const single = asString(content['thumbnail_url']);
+        if (single) {
+            out.unshift({ url: single, hookText: undefined, style: undefined });
         }
         // URL 중복 제거
         const seen = new Set<string>();
@@ -97,7 +120,7 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
         });
     }, [pipeline.pipelineResult]);
 
-    const rankedThumbCandidates = useMemo(() => {
+    const rankedThumbCandidates = useMemo<ThumbCandidate[]>(() => {
         // 점수 기반 정렬이 가능한 경우: 점수(CTR/score) 내림차순
         // 불가능한 경우(권한/상태 등): 파일명(=URL 마지막 경로) 기준으로 고정 정렬해 화면이 흔들리지 않게 한다.
         const toScore = (url: string): number | null => {
@@ -132,8 +155,17 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
 
             return a._idx - b._idx;
         });
-        return items.map(({ _idx, ...rest }) => rest);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        return items.map(({ _idx: _unused, ...rest }) => rest);
     }, [thumbCandidates, thumbScores]);
+
+    const displayThumbCandidates = useMemo<ThumbCandidate[]>(() => {
+        if (rankedThumbCandidates.length) return rankedThumbCandidates;
+        if (pipeline.thumbnails.length) {
+            return pipeline.thumbnails.map((url) => ({ url, hookText: undefined, style: undefined }));
+        }
+        return DUMMY_THUMBNAILS.map((url) => ({ url, hookText: undefined, style: undefined }));
+    }, [rankedThumbCandidates, pipeline.thumbnails]);
 
     useEffect(() => {
         const thumb = selectedOutputs?.thumbnail?.url;
@@ -173,12 +205,13 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                             thumbnail_description: desc,
                             competitor_titles: competitorTitles,
                         });
-                        const p = res?.prediction || {};
+                        const prediction = (res as { prediction?: unknown } | null)?.prediction;
+                        const p = isRecord(prediction) ? prediction : {};
                         return {
                             url: c.url,
-                            predictedCtr: toNum((p as any).predicted_ctr),
-                            totalScore: toNum((p as any).total_score),
-                            grade: typeof (p as any).grade === 'string' ? ((p as any).grade as string) : undefined,
+                            predictedCtr: toNum(p['predicted_ctr']),
+                            totalScore: toNum(p['total_score']),
+                            grade: asString(p['grade']),
                         };
                     }),
                 );
@@ -188,7 +221,7 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                     map[r.url] = { predictedCtr: r.predictedCtr, totalScore: r.totalScore, grade: r.grade };
                 });
                 setThumbScores(map);
-            } catch (e: any) {
+            } catch {
                 if (cancelled) return;
                 // PRO 미만(403) 또는 task 컨텍스트 불충분 등은 조용히 폴백(원본 순서)
                 setThumbRankError('CTR 랭킹을 불러오지 못했습니다. (권한/상태에 따라 정렬이 생략될 수 있어요)');
@@ -280,11 +313,8 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                                             try {
                                                 const refreshed = await fetchPipelineResult(taskId);
                                                 usePipelineStore.getState().setExecutionState({ result: refreshed });
-                                            } catch (e: any) {
-                                                const msg =
-                                                    typeof e?.message === 'string'
-                                                        ? e.message
-                                                        : '결과를 새로고침하지 못했습니다.';
+                                            } catch (e: unknown) {
+                                                const msg = e instanceof Error ? e.message : '결과를 새로고침하지 못했습니다.';
                                                 setDistRefresh({ loading: false, error: msg });
                                                 return;
                                             } finally {
@@ -390,6 +420,7 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                             {...pipeline}
                             {...approval}
                             progressPercent={pipeline.pipelineStatus?.progress?.percentage ?? 0}
+                            showApprovalControls={slug !== 'create'}
                         />
                     )}
 
@@ -402,16 +433,13 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                             </Card>
 	                            <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
 		                                <h2 className="text-xl font-bold mb-4 text-slate-900">Thumbnails</h2>
-                                    {thumbRankError ? <p className="text-sm text-rose-600 font-semibold mb-2">{thumbRankError}</p> : null}
-	                                <div className="grid grid-cols-2 gap-3">
-	                                    {(rankedThumbCandidates.length
-                                            ? rankedThumbCandidates
-                                            : (pipeline.thumbnails.length ? pipeline.thumbnails.map((url) => ({ url })) : DUMMY_THUMBNAILS.map((url) => ({ url })))
-                                        ).map((item: any, i: number) => {
-                                            const url = item.url as string;
-                                            const score = thumbScores[url];
-                                            const isSelected = selectedThumbUrl === url;
-                                            return (
+	                                    {thumbRankError ? <p className="text-sm text-rose-600 font-semibold mb-2">{thumbRankError}</p> : null}
+		                                <div className="grid grid-cols-2 gap-3">
+		                                    {displayThumbCandidates.map((item, i) => {
+	                                            const url = item.url;
+	                                            const score = thumbScores[url];
+	                                            const isSelected = selectedThumbUrl === url;
+	                                            return (
                                                 <div key={`${url}-${i}`} className="rounded-md border border-slate-200 bg-white overflow-hidden">
                                                     {/* eslint-disable-next-line @next/next/no-img-element -- 외부/동적 URL(서명 URL 포함)이라 next/image 최적화 적용이 어렵습니다. */}
                                                     <img src={url} alt="thumb" className="w-full aspect-[9/16] object-cover" />
@@ -496,16 +524,16 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
 	                                                } catch {
 	                                                    // ignore
 	                                                }
-	                                            } catch (e: any) {
-	                                                const msg =
-	                                                    typeof e?.message === 'string'
-	                                                        ? e.message
-	                                                        : '선택 썸네일 기반 비디오 생성에 실패했습니다.';
-	                                                setI2vStatus({ loading: false, error: msg });
-	                                                return;
-	                                            } finally {
-	                                                setI2vStatus((s) => ({ ...s, loading: false }));
-	                                            }
+                                            } catch (e: unknown) {
+                                                const msg =
+                                                    e instanceof Error
+                                                        ? e.message
+                                                        : '선택 썸네일 기반 비디오 생성에 실패했습니다.';
+                                                setI2vStatus({ loading: false, error: msg });
+                                                return;
+                                            } finally {
+                                                setI2vStatus((s) => ({ ...s, loading: false }));
+                                            }
 	                                        }}
 	                                        disabled={!selectedThumbUrl || i2vStatus.loading}
 	                                        variant="secondary"

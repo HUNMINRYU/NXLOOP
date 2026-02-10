@@ -16,6 +16,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+import json
+
+from decimal import Decimal
+from enum import Enum
+from uuid import UUID
+
 
 class Base(DeclarativeBase):
     pass
@@ -107,6 +113,59 @@ class AuditLog(Base):
     )
 
 
+class PipelineTask(Base):
+    """Cloud Run 다중 인스턴스에서도 안정적으로 조회 가능한 파이프라인 상태/결과 저장."""
+
+    __tablename__ = "pipeline_tasks"
+
+    task_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    product_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    message: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+
+    # JSON 직렬화된 상태 스냅샷(프론트 응답과 동일한 형태를 저장)
+    status_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_kst, nullable=False, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=now_kst,
+        onupdate=now_kst,
+        nullable=False,
+        index=True,
+    )
+
+    @staticmethod
+    def dumps(payload) -> str:
+        def _default(obj):
+            # 파이프라인 결과/상태는 다양한 타입을 포함할 수 있어 JSON 직렬화 방어가 필요합니다.
+            if isinstance(obj, (datetime, date)):
+                return obj.isoformat()
+            if isinstance(obj, UUID):
+                return str(obj)
+            if isinstance(obj, Decimal):
+                # 금액/정확도가 중요한 값이 있을 수 있어 문자열로 보존
+                return str(obj)
+            if isinstance(obj, Enum):
+                return obj.value
+            # Pydantic v2/v1 객체 방어 (가능하면 dict 형태로 저장)
+            if hasattr(obj, "model_dump"):
+                return obj.model_dump()
+            if hasattr(obj, "dict"):
+                return obj.dict()
+            return str(obj)
+
+        return json.dumps(
+            payload or {},
+            ensure_ascii=False,
+            separators=(",", ":"),
+            default=_default,
+        )
+
+
 class PipelineSchedule(Base):
     __tablename__ = "pipeline_schedules"
 
@@ -190,6 +249,31 @@ class CTRFeedback(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_kst, nullable=False
     )
+
+
+class ModelEvalReport(Base):
+    """오프라인 모델 평가 리포트 요약(운영 조회/Notion 링크용).
+
+    원본(JSON/MD)은 GCS에 아카이브하고, DB에는 요약 메트릭만 저장합니다.
+    """
+
+    __tablename__ = "model_eval_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    report_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    report_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+
+    # 핵심 요약/메트릭(간단 조회용). 구조 변경이 잦으므로 JSON(Text)로 둔다.
+    dataset_counts_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    cls_metrics_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    reg_metrics_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    baseline_metrics_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+
+    # 아카이브/외부 링크
+    artifact_gcs_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    notion_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_kst, nullable=False)
 
 
 class BrandKit(Base):

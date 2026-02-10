@@ -188,11 +188,11 @@ export default function Navbar() {
         <nav
             className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 px-6 md:px-12 py-4 flex justify-between items-center ${showDarkNav ? 'bg-white/80 backdrop-blur-2xl border-b border-slate-100 shadow-[0_4px_30px_rgba(0,0,0,0.03)] py-3' : 'bg-transparent'}`}
         >
-            <Link href="/" className="text-2xl font-black tracking-tighter flex items-center group cursor-pointer">
+            <Link href="/" className="text-2xl font-black tracking-tighter flex items-center group cursor-pointer leading-none">
                 <span className={`${showDarkNav ? 'text-slate-900' : 'text-white'} transition-colors duration-500`}>
                     NEX
                 </span>
-                <span className="text-transparent bg-clip-text bg-linear-to-r from-primary to-accent group-hover:from-accent group-hover:to-primary transition-all duration-1000">
+                <span className="inline-block pr-[0.06em] text-transparent bg-clip-text bg-linear-to-r from-primary to-accent group-hover:from-accent group-hover:to-primary transition-all duration-1000">
                     LOOP
                 </span>
             </Link>

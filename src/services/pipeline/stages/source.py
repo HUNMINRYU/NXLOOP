@@ -7,7 +7,7 @@ import numpy as np
 
 from infrastructure.clients.gemini_client import GeminiClient
 from services.pipeline.types import AuthorInfo, Candidate
-from utils.logger import get_logger
+from utils.logger import get_logger, log_feature_end, log_feature_start
 
 logger = get_logger(__name__)
 
@@ -38,12 +38,15 @@ class TwoTowerSource:
         if not raw_items:
             return []
 
+        log_feature_start("xalgo_two_tower", f"raw_items={len(raw_items)}")
+
         def _tokenize(text: str) -> list[str]:
             # 간단한 토큰화(공백 기반). 한국어의 경우 완벽하진 않지만 BM25 신호로는 충분히 유용함.
             return [t for t in (text or "").lower().split() if t]
 
         # 1. Brand Tower 생성 (캐싱 적용)
         brand_text = brand_context or "General interesting marketing content"
+        cache_hit_brand = 1 if brand_text in self._vector_cache else 0
         brand_vector = await self._get_embedding_cached(brand_text)
 
         # 2. 모든 아이템에 대해 병렬로 콘텐츠 벡터 생성
@@ -52,12 +55,15 @@ class TwoTowerSource:
         for item in raw_items:
             content_to_embed = f"{item.get('title', '')} {item.get('text', '')}"[:1000]
             contents_for_bm25.append(content_to_embed)
+            # 캐시 히트는 빠른 운영 판단을 위한 참고값 (정확한 hit/miss 보장은 아님)
             tasks.append(self._get_embedding_cached(content_to_embed))
 
         content_vectors = await asyncio.gather(*tasks)
+        cache_hit_contents = sum(1 for t in contents_for_bm25 if t in self._vector_cache)
 
         # 2.5 BM25 점수 계산(가능한 경우). 실패하면 0으로 fallback.
         bm25_norm_scores: list[float] = [0.0 for _ in raw_items]
+        bm25_ok = False
         try:
             from rank_bm25 import BM25Okapi
 
@@ -71,6 +77,7 @@ class TwoTowerSource:
                     bm25_norm_scores = [(s - s_min) / (s_max - s_min) for s in raw_scores]
                 else:
                     bm25_norm_scores = [0.0 for _ in raw_scores]
+            bm25_ok = True
         except Exception as e:
             logger.warning(f"BM25 계산 실패(무시하고 진행): {e}")
 
@@ -104,6 +111,14 @@ class TwoTowerSource:
 
             candidates.append(candidate)
 
+        log_feature_end(
+            "xalgo_two_tower",
+            extra_detail=(
+                f"candidates={len(candidates)} "
+                f"embed_cache_hit~={cache_hit_contents + cache_hit_brand}/{len(contents_for_bm25) + 1} "
+                f"bm25={'ok' if bm25_ok else 'fail'}"
+            ),
+        )
         return candidates
 
     async def _get_embedding_cached(self, text: str) -> np.ndarray:

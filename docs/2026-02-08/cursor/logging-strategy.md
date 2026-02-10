@@ -45,25 +45,43 @@
 | `studio_refine` | 스튜디오 프롬프트 고도화 (PRO) | POST /studio/refine |
 | `pipeline_select_output` | Create 산출물(썸네일/비디오) 1개 채택 | POST /pipeline/result/{task_id}/select-output |
 | `pipeline_generate_video_selected_thumbnail` | 선택 썸네일 기반 I2V 비디오 재생성 + 자동 채택 | POST /pipeline/result/{task_id}/generate-video-from-selected-thumbnail |
+| `content_get_thumbnail_styles` | 썸네일 스타일 목록 조회 | GET /thumbnail/styles |
+| `content_generate_hooks` | 훅 문구 생성 (style별) | POST /hooks/generate |
+| `content_thumbnail_compare` | 여러 스타일 썸네일 비교 생성 | POST /thumbnail/compare-styles |
+| `content_get_hook_styles` | 훅 전략 9종 목록 조회 | GET /hooks/styles |
+| `content_get_video_presets` | 비디오 프리셋 조회 | GET /video/presets |
+| `content_video_generate` | 비디오 생성 (Standard/Custom) | POST /video/generate |
+| `content_video_extend` | 비디오 확장 생성 | POST /video/extend |
+| `insights_upload` | 인사이트 수동 업로드 | POST /insights/upload |
+| `insights_ingest_naver` | 네이버 인사이트 수집 | POST /insights/external/naver |
+| `insights_ingest_youtube` | YouTube 인사이트 수집 | POST /insights/external/youtube |
+| `insights_search` | 인사이트 검색 | GET /insights/search |
+| `insights_metrics` | 인사이트 지표 조회 | GET /insights/metrics |
+| `insights_teams` | 팀 목록 조회 | GET /insights/teams |
+| `insights_failures` | 실패 이력 조회 | GET /insights/failures |
+| `insights_daily_report` | 일일 리포트 생성 | POST /insights/reports/daily |
+| `products_list` | 상품 목록 조회 | GET /products/ |
+| `products_detail` | 상품 상세 조회 | GET /products/{name} |
 
 ---
 
-## 3. 적용 현황 (2026-02-09)
+## 3. 적용 현황 (2026-02-09 업데이트)
 
 | 라우터/파일 | 적용된 feature | 비고 |
 |-------------|----------------|------|
 | `app.py` | app_startup, app_shutdown | lifespan |
 | `auth.py` | auth_signup, auth_login, auth_logout | |
-| `misc.py` | health_check, leads_capture, chat_remaining, chat_reply, chat_reply_stream, refresh_signed_url, search_discovery | |
+| `chat.py` | chat_remaining, chat_reply, chat_reply_stream | 독립 라우터로 분리됨 |
+| `misc.py` | health_check, leads_capture, refresh_signed_url, search_discovery | chat 관련은 chat.py로 이동 |
 | `stripe.py` | stripe_create_checkout, stripe_webhook | |
 | `webhooks.py` | webhook_pipeline | |
 | `admin.py` | admin_evaluate_model (predictions/ranking/compare) | cache/roles/teams/schedules 등은 추후 확장 |
 | `pipeline_runner.py` | pipeline_run | HTTP POST /run 은 runner 내부에서 로깅 |
 | `studio.py` | studio_draft, studio_refine | |
 | `pipeline.py` | pipeline_select_output, pipeline_generate_video_selected_thumbnail | (부분 적용) 나머지 history/status/run/analysis/export 등은 필요 시 추가 |
-| `content.py` | (미적용) | thumbnail/hooks/video — 필요 시 추가 |
-| `insights.py` | (미적용) | upload/search/metrics 등 — 필요 시 추가 |
-| `products.py` | (미적용) | list/detail — 읽기 전용, 낮은 우선순위 |
+| `content.py` | content_get_thumbnail_styles, content_generate_hooks, content_thumbnail_compare, content_get_hook_styles, content_get_video_presets, content_video_generate, content_video_extend | ✅ 전체 적용 완료 |
+| `insights.py` | insights_upload, insights_ingest_naver, insights_ingest_youtube, insights_search, insights_daily_report, insights_metrics, insights_teams, insights_failures | ✅ 전체 적용 완료 |
+| `products.py` | products_list, products_detail | ✅ 전체 적용 완료 |
 
 ---
 

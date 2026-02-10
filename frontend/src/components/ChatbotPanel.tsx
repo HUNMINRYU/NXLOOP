@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -27,19 +28,99 @@ function getErrorMessage(err: unknown): string {
     return '';
 }
 
+function isProbablyInternalPath(token: string): boolean {
+    // 최소한 "/"로 시작하고 공백이 없는 케이스만 내부 경로로 취급
+    // (예: /pricing, /payment/success?session_id=...)
+    return token.startsWith('/') && token.length > 1 && !token.startsWith('//');
+}
+
+function normalizeUrl(token: string): string {
+    if (token.startsWith('http://') || token.startsWith('https://')) return token;
+    if (token.startsWith('www.')) return `https://${token}`;
+    return token;
+}
+
+function LinkifiedText({
+    text,
+    onNavigate,
+}: {
+    text: string;
+    onNavigate?: (href: string) => void;
+}) {
+    // 매우 단순한 linkify: http(s)://..., www..., /internal/path 를 링크로 변환
+    // XSS 방지를 위해 dangerouslySetInnerHTML은 사용하지 않습니다.
+    const pattern =
+        /(\bhttps?:\/\/[^\s<]+|\bwww\.[^\s<]+|\/[A-Za-z0-9][^\s<]*)/g;
+
+    const parts: Array<string | { kind: 'internal' | 'external'; value: string }> = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = pattern.exec(text)) !== null) {
+        const token = match[0] ?? '';
+        const start = match.index ?? 0;
+        if (start > lastIndex) parts.push(text.slice(lastIndex, start));
+
+        if (isProbablyInternalPath(token)) {
+            parts.push({ kind: 'internal', value: token });
+        } else {
+            parts.push({ kind: 'external', value: normalizeUrl(token) });
+        }
+        lastIndex = start + token.length;
+    }
+    if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+
+    return (
+        <span className="whitespace-pre-wrap break-words">
+            {parts.map((p, idx) => {
+                if (typeof p === 'string') return <React.Fragment key={idx}>{p}</React.Fragment>;
+
+                if (p.kind === 'internal') {
+                    return (
+                        <button
+                            key={idx}
+                            type="button"
+                            className="text-blue-600 hover:underline font-semibold"
+                            onClick={() => (onNavigate ? onNavigate(p.value) : (window.location.href = p.value))}
+                        >
+                            {p.value}
+                        </button>
+                    );
+                }
+
+                return (
+                    <a
+                        key={idx}
+                        href={p.value}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline font-semibold"
+                    >
+                        {p.value}
+                    </a>
+                );
+            })}
+        </span>
+    );
+}
+
 function ChatBubble({
     msg,
     onCta,
     onInlineLogin,
     onInlineSignup,
+    onInlinePricing,
+    onNavigate,
 }: {
     msg: Message;
     onCta?: (card: ChatCard) => void;
     onInlineLogin?: () => void;
     onInlineSignup?: () => void;
+    onInlinePricing?: () => void;
+    onNavigate?: (href: string) => void;
 }) {
     const isAi = msg.role === 'ai';
-    const showInlineCta = isAi && msg.showInlineCta && (onInlineLogin || onInlineSignup);
+    const showInlineCta = isAi && msg.showInlineCta && (onInlineLogin || onInlineSignup || onInlinePricing);
 
     const renderSources = (sources: Source[]) => (
         <details className="mt-3 group">
@@ -90,6 +171,15 @@ function ChatBubble({
                         회원가입하기
                     </button>
                 )}
+                {onInlinePricing && (
+                    <button
+                        type="button"
+                        onClick={onInlinePricing}
+                        className="text-xs font-semibold text-[var(--color-primary)] hover:underline py-1"
+                    >
+                        구독 플랜 보기
+                    </button>
+                )}
             </div>
         </div>
     );
@@ -106,7 +196,7 @@ function ChatBubble({
                         <span className="text-[var(--color-primary)]" aria-hidden>💡</span> {card.title}
                     </div>
                     <p className="text-sm font-semibold text-[var(--color-muted)] mb-2 whitespace-pre-wrap">
-                        {msg.content}
+                        <LinkifiedText text={msg.content} onNavigate={onNavigate} />
                     </p>
                     <ul className="list-disc list-inside text-sm font-medium text-[var(--color-muted)] space-y-1 mb-3">
                         {card.bullets.map((b, i) => (
@@ -167,7 +257,7 @@ function ChatBubble({
                     }`}
                 >
                     <p className="text-sm font-medium text-[var(--color-foreground)] break-words whitespace-pre-wrap leading-relaxed">
-                        {msg.content}
+                        <LinkifiedText text={msg.content} onNavigate={onNavigate} />
                     </p>
                     {isAi && msg.sources && msg.sources.length > 0 && renderSources(msg.sources)}
                 </div>
@@ -199,15 +289,14 @@ type ChatbotPanelProps = {
 
 export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: ChatbotPanelProps) {
     const router = useRouter();
-    const [messages, setMessages] = useState<Message[]>(() => {
-        const stored = loadStoredChat();
-        return stored?.messages ?? [WELCOME];
-    });
+    const email = useAuthStore((s) => s.email); // Use email as ID since user object/id is not in store
+
+    // Initialize with empty first, let useEffect hydration handle loading correct data
+    // to avoid mismatch between SSR/CSR or previous user data
+    const [messages, setMessages] = useState<Message[]>([WELCOME]);
+    const [sessionId, setSessionId] = useState<string>('');
     const [input, setInput] = useState('');
-    const [sessionId, setSessionId] = useState<string>(() => {
-        const stored = loadStoredChat();
-        return stored?.sessionId ?? '';
-    });
+    const [isHydrated, setIsHydrated] = useState(false);
     const [isSending, setIsSending] = useState(false);
     const [loadingStatus, setLoadingStatus] = useState('요청을 분석하고 있습니다...');
     const listRef = useRef<HTMLDivElement>(null);
@@ -220,22 +309,35 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
         if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
     }, [messages, checkAuthStatus, isSending, loadingStatus]); // Scroll on status change too
 
-    // 로그인/회원가입·새로고침 후에도 채팅 내역 유지: localStorage에 저장
+    // 유저 변경(로그인/로그아웃/계정전환) 시 해당 유저의 데이터 로드
     useEffect(() => {
-        saveStoredChat(messages, sessionId);
-    }, [messages, sessionId]);
+        const stored = loadStoredChat(email || undefined);
+        if (stored) {
+            setMessages(stored.messages);
+            setSessionId(stored.sessionId);
+        } else {
+            // 저장된 게 없으면 (새 유저 or 비회원) 초기화
+            setMessages([WELCOME]);
+            setSessionId('');
+        }
+        setIsHydrated(true);
+    }, [email]);
 
-    // 패널 열 때 서버 기준 남은 횟수·리필 시각 동기화 (24시간/자정 KST 기준)
+    // 대화 내역 변경 시 현재 유저 키로 저장
     useEffect(() => {
-        if (!isOpen) return;
-        getChatRemaining()
-            .then((data) => {
-                if (typeof data.remaining === 'number') setRemainingMessages(data.remaining);
-                else if (data.remaining === null) setRemainingMessages(999); // PRO/BUSINESS 무제한
-                if (data.resets_at && typeof data.limit_per_day === 'number') setRefillInfo({ resetsAt: data.resets_at, limitPerDay: data.limit_per_day });
-            })
-            .catch(() => {});
-    }, [isOpen, setRemainingMessages]);
+        if (!isHydrated) return; // Don't save before loading
+        saveStoredChat(messages, sessionId, email || undefined);
+    }, [messages, sessionId, email, isHydrated]);
+
+    // 서버 재시작 감지: 완전 리필(3/3 or 10/10) 시 서버 세션이 사라졌으므로 클라이언트 세션도 리셋
+    useEffect(() => {
+        if (!refillInfo) return;
+
+        const isFullyRefilled = remainingMessages === refillInfo.limitPerDay;
+        if (isFullyRefilled && messages.length > 1 && tier !== 'PRO' && tier !== 'BUSINESS') {
+            setSessionId('');
+        }
+    }, [remainingMessages, refillInfo, messages.length, tier]);
 
     // Sequential Loading Status Effect
     useEffect(() => {
@@ -249,7 +351,7 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
         const interval = setInterval(() => {
             stepIndex = (stepIndex + 1) % steps.length;
             setLoadingStatus(steps[stepIndex] ?? '답변을 생성하고 있습니다...');
-        }, 2000); // Change message every 2 seconds
+        }, 2000);
 
         return () => clearInterval(interval);
     }, [isSending]);
@@ -302,7 +404,7 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
             setMessages((prev) => [...prev, aiReply]);
 
             // 채팅 성공 후 서버 기준 남은 횟수·리필 시각 동기화
-            getChatRemaining()
+            getChatRemaining({ forceRefresh: true })
                 .then((data) => {
                     if (typeof data.remaining === 'number') {
                         setRemainingMessages(data.remaining);
@@ -417,6 +519,10 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
                             key={msg.id}
                             msg={msg}
                             onCta={handleCta}
+                            onNavigate={(href) => {
+                                onClose();
+                                router.push(href);
+                            }}
                             onInlineLogin={
                                 !isAuthenticated
                                     ? () => {
@@ -430,6 +536,14 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
                                     ? () => {
                                           onClose();
                                           router.push('/signup');
+                                      }
+                                    : undefined
+                            }
+                            onInlinePricing={
+                                isAuthenticated && tier === 'FREE'
+                                    ? () => {
+                                          onClose();
+                                          router.push('/pricing');
                                       }
                                     : undefined
                             }
@@ -466,7 +580,13 @@ export default function ChatbotPanel({ onClose, isOpen, onLimitReached }: Chatbo
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && !hasReachedLimit && send()}
-                            placeholder={hasReachedLimit ? '로그인이 필요합니다.' : '메시지를 입력하세요...'}
+                            placeholder={
+                                hasReachedLimit
+                                    ? isAuthenticated
+                                        ? '일일 한도 초과. 무제한 대화를 원하시나요?'
+                                        : '로그인이 필요합니다.'
+                                    : '메시지를 입력하세요...'
+                            }
                             className="flex-1 min-w-0"
                             disabled={hasReachedLimit}
                         />

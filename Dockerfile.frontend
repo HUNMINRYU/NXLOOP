@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # Frontend SSR용 Dockerfile
 FROM node:20-alpine AS builder
 
@@ -9,10 +10,13 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 COPY frontend/package.json ./
 COPY frontend/package-lock.json ./
-RUN npm install
+# BuildKit cache를 쓰면(Cloud Build에서 DOCKER_BUILDKIT=1) npm 설치가 반복될 때 훨씬 빨라진다.
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY frontend/ ./
 RUN npm run build
+# 런타임에는 devDependencies가 필요 없어서 prune하면 이미지 push가 빨라진다.
+RUN npm prune --omit=dev
 
 FROM node:20-alpine
 
@@ -29,4 +33,4 @@ COPY --from=builder /app/frontend/node_modules ./node_modules
 
 EXPOSE 8080
 
-CMD ["npm", "start"]
+CMD ["sh", "-c", "exec npx next start -p ${PORT:-8080}"]

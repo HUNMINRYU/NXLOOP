@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { createCheckoutSession } from '@/lib/api';
+import { useEffect, useState } from 'react';
+import { createCheckoutSession, createLead, fetchMe } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 
 type PlanId = 'FREE' | 'PRO' | 'BUSINESS';
@@ -161,10 +161,40 @@ function PricingCard({
 
 export default function PricingPage() {
   const tier = useAuthStore((s) => s.tier);
+  const email = useAuthStore((s) => s.email);
+  const setAuth = useAuthStore((s) => s.setAuth);
   const [loading, setLoading] = useState<PlanId | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [salesOpen, setSalesOpen] = useState(false);
+  const [salesEmail, setSalesEmail] = useState('');
+  const [salesStatus, setSalesStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
+
+  useEffect(() => {
+    // pricing은 공개 경로라 AuthGate에서 fetchMe가 돌지 않습니다.
+    // 로그인 상태라면 1회 재조회로 Current Plan을 정확히 반영합니다.
+    if (!email) return;
+    fetchMe()
+      .then((me) => {
+        setAuth({
+          email: me.email,
+          role: me.role,
+          name: me.name,
+          tier: me.tier ?? 'FREE',
+          subscriptionStatus: me.subscription_status ?? 'none',
+        });
+      })
+      .catch(() => {
+        // ignore
+      });
+  }, [email, setAuth]);
 
   const handleCheckout = async (planId: PlanId) => {
+    if (planId === 'BUSINESS') {
+      setError(null);
+      setSalesOpen(true);
+      return;
+    }
+
     setLoading(planId);
     setError(null);
 
@@ -179,6 +209,80 @@ export default function PricingPage() {
 
   return (
     <main className="min-h-screen bg-[var(--color-background)]">
+      {salesOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => {
+              if (salesStatus !== 'sending') setSalesOpen(false);
+            }}
+            aria-hidden
+          />
+          <div
+            className="relative z-10 w-full max-w-md rounded-[var(--radius-xl)] bg-white p-6 shadow-[var(--shadow-soft-lg)] border border-[var(--color-border)]"
+            role="dialog"
+            aria-modal
+            aria-labelledby="sales-title"
+          >
+            <h3 id="sales-title" className="text-lg font-black text-[var(--color-foreground)]">
+              Business 플랜 문의
+            </h3>
+            <p className="mt-2 text-sm text-[var(--color-muted)] leading-relaxed">
+              이메일을 남겨주시면 팀에서 빠르게 연락드릴게요.
+            </p>
+
+            {salesStatus === 'sent' ? (
+              <div className="mt-5 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+                접수되었습니다. 곧 연락드리겠습니다.
+              </div>
+            ) : (
+              <>
+                <div className="mt-4">
+                  <label className="block text-xs font-semibold text-[var(--color-muted)] mb-2">
+                    이메일
+                  </label>
+                  <input
+                    value={salesEmail}
+                    onChange={(e) => setSalesEmail(e.target.value)}
+                    placeholder="you@company.com"
+                    className="w-full rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-sm"
+                    disabled={salesStatus === 'sending'}
+                  />
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <button
+                    type="button"
+                    className="soft-button-secondary w-full justify-center"
+                    onClick={() => setSalesOpen(false)}
+                    disabled={salesStatus === 'sending'}
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    className="soft-button-primary w-full justify-center"
+                    onClick={async () => {
+                      setError(null);
+                      setSalesStatus('sending');
+                      try {
+                        await createLead({ email: salesEmail.trim() });
+                        setSalesStatus('sent');
+                      } catch (e) {
+                        setSalesStatus('idle');
+                        setError(e instanceof Error ? e.message : 'Failed to submit lead.');
+                      }
+                    }}
+                    disabled={salesStatus === 'sending'}
+                  >
+                    {salesStatus === 'sending' ? '전송 중...' : '문의 접수'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="relative overflow-hidden">
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[var(--color-accent-light)] via-transparent to-transparent" />
         <div className="mx-auto max-w-6xl px-6 py-16">

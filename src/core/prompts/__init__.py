@@ -34,24 +34,10 @@ __all__ = ["PromptRegistry", "PromptTemplate", "prompt_registry"]
 # 아래에서 모듈들을 명시적으로 import해 레지스트리를 채웁니다.
 #
 # NOTE: circular import를 피하기 위해 prompt_registry 정의 이후에 import합니다.
-from . import (  # noqa: E402
-    chatbot_prompts as _chatbot_prompts,
-)
-from . import (
-    ctr_prediction_prompts as _ctr_prediction_prompts,
-)
-from . import (
-    hydration_prompts as _hydration_prompts,
-)
-from . import (
-    marketing_prompts as _marketing_prompts,
-)
-from . import (
-    pipeline_prompts as _pipeline_prompts,
-)
-from . import (
-    social_media_prompts as _social_media_prompts,
-)
-from . import (
-    studio_prompts as _studio_prompts,
-)
+from . import chatbot_prompts as _chatbot_prompts  # noqa: E402,F401
+from . import ctr_prediction_prompts as _ctr_prediction_prompts  # noqa: E402,F401
+from . import hydration_prompts as _hydration_prompts  # noqa: E402,F401
+from . import marketing_prompts as _marketing_prompts  # noqa: E402,F401
+from . import pipeline_prompts as _pipeline_prompts  # noqa: E402,F401
+from . import social_media_prompts as _social_media_prompts  # noqa: E402,F401
+from . import studio_prompts as _studio_prompts  # noqa: E402,F401

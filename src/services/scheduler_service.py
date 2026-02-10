@@ -1,5 +1,6 @@
 """파이프라인 스케줄러 서비스 (async)"""
 
+from contextlib import suppress
 from datetime import datetime
 from uuid import uuid4
 
@@ -95,10 +96,9 @@ class SchedulerService:
 
         # 3. schedule_id를 payload에 추가하고 GCP Job 업데이트
         payload["schedule_id"] = schedule.id
-        try:
+        with suppress(Exception):
+            # schedule_id는 선택적 필드이므로, 업데이트 실패 시에도 스케줄 자체는 유효하다.
             self.scheduler.update_job(gcp_job_id, cron, payload)
-        except Exception:
-            pass  # schedule_id는 선택적 필드
 
         logger.info(f"스케줄 생성 완료: {schedule.id} ({schedule.name})")
         return schedule

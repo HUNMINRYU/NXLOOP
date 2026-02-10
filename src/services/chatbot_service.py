@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import re
-from threading import Lock
+from asyncio import Lock
 from typing import Any
 from uuid import uuid4
 
@@ -18,12 +18,16 @@ from core.prompts import (
     prompt_registry,
 )
 from utils.logger import (
-    log_error,
-    log_info,
+    get_logger,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
     log_llm_fail,
     log_llm_request,
     log_llm_response,
 )
+
+logger = get_logger(__name__)
 
 # 인사·간단 문구 즉시 응답 (챗봇 응답 속도 개선)
 GREETING_PATTERNS = (
@@ -118,6 +122,7 @@ INTENT_CHOICES: list[
 ]
 
 
+
 class ChatbotService:
     """챗봇 비즈니스 로직"""
 
@@ -135,6 +140,7 @@ class ChatbotService:
         session_id: str | None = None,
         data_store_id: str | None = None,
     ) -> dict:
+        log_feature_start("chatbot_generate_reply", session_id or "N/A")
         text = message.strip()
         if not text:
             return {
@@ -144,13 +150,13 @@ class ChatbotService:
                 "sources": [],
             }
 
-        session = self._get_or_create_session(session_id)
+        session = await self._get_or_create_session(session_id)
 
-        # 인사·간단 패턴이면 LLM/RAG 없이 즉시 응답 (응답 속도 개선)
         if self._is_greeting_or_simple(text):
             session.add_message("user", text)
             answer = self._get_greeting_reply()
             session.add_message("ai", answer)
+            log_feature_end("chatbot_generate", extra_detail="greeting")
             return {
                 "session_id": session.session_id,
                 "message": answer,
@@ -158,13 +164,13 @@ class ChatbotService:
                 "sources": [],
             }
 
-        # 의도(요금제/로그인/파이프라인/생성 선택지 등)가 잡히면 LLM 없이 고정 메시지+카드 즉시 반환
         intent_card = self._detect_intent_link(text)
         if intent_card:
             reply_message = intent_card.get("message", "해당 페이지로 안내해 드릴게요.")
             session.add_message("user", text)
             session.add_message("ai", reply_message)
             card = self._sanitize_card(intent_card)
+            log_feature_end("chatbot_generate", extra_detail="intent_link")
             return {
                 "session_id": session.session_id,
                 "message": reply_message,
@@ -177,7 +183,9 @@ class ChatbotService:
         if self._should_skip_query_lookup(text):
             search_query = ""
         else:
+            log_feature_start("chatbot_query_optimization")
             search_query = await self._generate_search_query(session, text)
+            log_feature_end("chatbot_query_optimization", extra_detail=search_query)
 
         rag_results = []
         use_grounding = False
@@ -185,11 +193,13 @@ class ChatbotService:
 
         if search_query:
             # Parallel Execution possible, but keeping sequential for now
+            log_feature_start("chatbot_rag_search", search_query)
             rag_results = await self._rag_client.search(
                 search_query,
                 max_results=5,
                 data_store_id=data_store_id,
             )
+            log_feature_end("chatbot_rag_search", extra_detail=f"results={len(rag_results)}")
             sources = self._sanitize_sources(rag_results)
             use_grounding = not rag_results
 
@@ -204,7 +214,7 @@ class ChatbotService:
         log_llm_request("챗봇 응답", f"메시지 {len(text)}자, Query={search_query}")
         store_tag = (data_store_id or "").strip()
         store_tag = store_tag[-8:] if store_tag else "none"
-        log_info(f"RAG used: results={len(rag_results)} sources={len(sources)} store={store_tag}")
+        logger.info(f"RAG used: results={len(rag_results)} sources={len(sources)} store={store_tag}")
 
         try:
             # .env GEMINI_TEXT_MODEL 사용 (클라이언트 기본값)
@@ -217,7 +227,7 @@ class ChatbotService:
             log_llm_response("챗봇 응답", f"응답 {len(raw_response or '')}자")
         except Exception as e:
             log_llm_fail("챗봇 응답", str(e))
-            log_error(f"챗봇 응답 생성 실패: {e}")
+            logger.error(f"챗봇 응답 생성 실패: {e}")
             raw_response = "죄송합니다. 현재 응답을 생성할 수 없습니다."
 
         parsed = self._parse_json_output(raw_response)
@@ -236,6 +246,7 @@ class ChatbotService:
 
         session.add_message("ai", answer)
 
+        log_feature_end("chatbot_generate")
         return {
             "session_id": session.session_id,
             "message": answer,
@@ -289,8 +300,8 @@ class ChatbotService:
 
         return sources
 
-    def _get_or_create_session(self, session_id: str | None) -> ChatSession:
-        with self._lock:
+    async def _get_or_create_session(self, session_id: str | None) -> ChatSession:
+        async with self._lock:
             if session_id and session_id in self._sessions:
                 return self._sessions[session_id]
             new_id = session_id or str(uuid4())
@@ -477,9 +488,9 @@ class ChatbotService:
                 return ""
             return query
         except Exception as e:
-            log_error(f"쿼리 생성 실패: {e}")
+            log_feature_fail("chatbot_query_optimization", str(e))
+            logger.error(f"쿼리 생성 실패: {e}")
             return current_message  # 실패 시 원본 메시지 사용
-
     async def generate_reply_stream(
         self,
         message: str,
@@ -487,6 +498,7 @@ class ChatbotService:
         data_store_id: str | None = None,
     ):
         """SSE 스트리밍 응답 생성"""
+        log_feature_start("chatbot_stream", f"msg_len={len(message or '')}")
         import json
 
         text = message.strip()
@@ -494,13 +506,14 @@ class ChatbotService:
             yield f"data: {json.dumps({'error': '메시지를 입력해 주세요.'}, ensure_ascii=False)}\n\n"
             return
 
-        session = self._get_or_create_session(session_id)
+        session = await self._get_or_create_session(session_id)
 
         # 인사·간단 패턴이면 LLM/RAG 없이 즉시 응답 (응답 속도 개선)
         if self._is_greeting_or_simple(text):
             session.add_message("user", text)
             answer = self._get_greeting_reply()
             session.add_message("ai", answer)
+            log_feature_end("chatbot_stream", extra_detail="greeting")
             yield f"data: {json.dumps({'step': 'done', 'full_text': answer, 'card': None, 'session_id': session.session_id}, ensure_ascii=False)}\n\n"
             return
 
@@ -511,6 +524,7 @@ class ChatbotService:
             session.add_message("user", text)
             session.add_message("ai", reply_message)
             card = self._sanitize_card(intent_card)
+            log_feature_end("chatbot_stream", extra_detail="intent_link")
             yield f"data: {json.dumps({'step': 'done', 'full_text': reply_message, 'card': card, 'session_id': session.session_id}, ensure_ascii=False)}\n\n"
             return
 
@@ -520,7 +534,9 @@ class ChatbotService:
             search_query = ""
         else:
             yield f"data: {json.dumps({'step': 'searching', 'message': '질문을 분석하고 있습니다...'}, ensure_ascii=False)}\n\n"
+            log_feature_start("chatbot_query_optimization")
             search_query = await self._generate_search_query(session, text)
+            log_feature_end("chatbot_query_optimization", extra_detail=search_query)
 
         rag_results = []
         use_grounding = False
@@ -529,12 +545,14 @@ class ChatbotService:
         if search_query:
             # 2. 문서 검색
             yield f"data: {json.dumps({'step': 'searching', 'message': f'🔍 검색: {search_query}'}, ensure_ascii=False)}\n\n"
+            log_feature_start("chatbot_rag_search", search_query)
 
             rag_results = await self._rag_client.search(
                 search_query,
                 max_results=5,
                 data_store_id=data_store_id,
             )
+            log_feature_end("chatbot_rag_search", extra_detail=f"results={len(rag_results)}")
             sources = self._sanitize_sources(rag_results)
             use_grounding = not rag_results
         else:
@@ -586,9 +604,10 @@ class ChatbotService:
 
             session.add_message("ai", answer)
 
+            log_feature_end("chatbot_stream")
             yield f"data: {json.dumps({'step': 'done', 'full_text': answer, 'card': card, 'session_id': session.session_id}, ensure_ascii=False)}\n\n"
 
         except Exception as e:
             log_llm_fail("챗봇 스트리밍", str(e))
-            log_error(f"챗봇 스트리밍 실패: {e}")
+            logger.error(f"챗봇 스트리밍 실패: {e}")
             yield f"data: {json.dumps({'error': '죄송합니다. 응답 생성 중 오류가 발생했습니다.'}, ensure_ascii=False)}\n\n"

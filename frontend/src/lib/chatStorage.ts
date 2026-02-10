@@ -10,12 +10,19 @@
 
 import type { Message } from '@/types/chat';
 
-export const CHAT_STORAGE_KEY = 'nexloop_chat';
+// Key will be dynamic based on user ID
+const BASE_KEY = 'nexloop_chat';
 
-export function loadStoredChat(): { messages: Message[]; sessionId: string } | null {
+function getKey(userId?: string) {
+    if (!userId) return `${BASE_KEY}_guest`;
+    return `${BASE_KEY}_${userId}`;
+}
+
+export function loadStoredChat(userId?: string): { messages: Message[]; sessionId: string } | null {
     if (typeof window === 'undefined') return null;
     try {
-        const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+        const key = getKey(userId);
+        const raw = localStorage.getItem(key);
         if (!raw) return null;
         const data = JSON.parse(raw) as unknown;
         if (!data || typeof data !== 'object') return null;
@@ -29,20 +36,34 @@ export function loadStoredChat(): { messages: Message[]; sessionId: string } | n
     }
 }
 
-export function saveStoredChat(messages: Message[], sessionId: string): void {
+export function saveStoredChat(messages: Message[], sessionId: string, userId?: string): void {
     if (typeof window === 'undefined') return;
     try {
-        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ messages, sessionId }));
+        const key = getKey(userId);
+        localStorage.setItem(key, JSON.stringify({ messages, sessionId }));
+        
+        // userId가 있으면 guest 데이터는 삭제할 수도 있음 (병합 전략에 따라)
+        // 여기서는 격리만 함
     } catch {
         // quota or disabled localStorage
     }
 }
 
-/** 로그아웃 시 호출하여 저장된 채팅 내역 삭제 */
-export function clearStoredChat(): void {
+/** 로그아웃 시 호출하여 저장된 채팅 내역 삭제 (특정 유저 또는 전체) */
+export function clearStoredChat(userId?: string): void {
     if (typeof window === 'undefined') return;
     try {
-        localStorage.removeItem(CHAT_STORAGE_KEY);
+        if (userId) {
+            localStorage.removeItem(getKey(userId));
+        } else {
+            // userId가 없으면 guest 키 삭제
+            localStorage.removeItem(getKey());
+            
+            // 또는 모든 nexloop_chat 관련 키 삭제 (안전하게)
+            Object.keys(localStorage).forEach(k => {
+                if (k.startsWith(BASE_KEY)) localStorage.removeItem(k);
+            });
+        }
     } catch {
         // ignore
     }

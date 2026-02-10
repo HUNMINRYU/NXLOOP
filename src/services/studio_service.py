@@ -7,6 +7,7 @@ from typing import Any
 from core.prompts import prompt_registry
 from core.prompts.veo_prompt_engine import VeoPromptEngine
 from infrastructure.clients.gemini_client import GeminiClient
+from utils.logger import log_feature_end, log_feature_fail, log_feature_start
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,8 @@ class StudioService:
         """
         초합 프롬프트 생성 (비디오 및 썸네일 통합)
         """
-        # 1. Veo Prompt Engine을 사용한 초안 생성
+        # 초안 생성 시작 로깅
+        log_feature_start("studio_generate_draft", product_name)
         prompt_text = VeoPromptEngine.construct_generation_prompt(
             product_name=product_name,
             product_desc=product_desc,
@@ -53,8 +55,11 @@ class StudioService:
 
             cleaned = re.sub(r"^```(?:json)?\s*", "", response.strip())
             cleaned = re.sub(r"\s*```\s*$", "", cleaned)
-            return json.loads(cleaned)
+            res = json.loads(cleaned)
+            log_feature_end("studio_generate_draft")
+            return res
         except Exception as e:
+            log_feature_fail("studio_generate_draft", str(e))
             logger.error(f"Studio draft generation failed: {e}")
             return {
                 "veo_prompt": "Error generating draft.",
@@ -71,6 +76,7 @@ class StudioService:
         """
         사용자 피드백을 반영한 프롬프트 고도화 (Refinement)
         """
+        log_feature_start("studio_refine_prompt")
         template = prompt_registry.get_template("studio.refine")
 
         brand_summary = "N/A"
@@ -89,8 +95,11 @@ class StudioService:
 
             cleaned = re.sub(r"^```(?:json)?\s*", "", response.strip())
             cleaned = re.sub(r"\s*```\s*$", "", cleaned)
-            return json.loads(cleaned)
+            res = json.loads(cleaned)
+            log_feature_end("studio_refine_prompt")
+            return res
         except Exception as e:
+            log_feature_fail("studio_refine_prompt", str(e))
             logger.error(f"Studio prompt refinement failed: {e}")
             return {
                 "refined_prompt": original_prompt,

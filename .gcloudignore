@@ -1,0 +1,37 @@
+# Speed up `gcloud builds submit` source upload.
+# Keep this list conservative: exclude bulk artifacts and caches, but keep build configs.
+
+.git
+.git/**
+
+**/__pycache__/**
+**/*.pyc
+**/*.pyo
+.mypy_cache/**
+.ruff_cache/**
+.pytest_cache/**
+.coverage
+
+frontend/node_modules/**
+**/node_modules/**
+frontend/.next/**
+**/.next/**
+
+outputs/**
+data/**
+
+docs/**
+
+# Local env/secrets
+.env
+.env.*
+**/*.env
+secrets.json
+key.json
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.idea/**
+.vscode/**
+

@@ -7,6 +7,9 @@ from core.exceptions import ThumbnailGenerationError
 from core.interfaces.ai_service import IMarketingAIService
 from utils.logger import (
     get_logger,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
     log_llm_fail,
     log_llm_request,
     log_llm_response,
@@ -130,6 +133,7 @@ class ThumbnailService:
             accent_color: 강조 색상
             progress_callback: 진행 콜백
         """
+        log_feature_start("thumbnail_generate", f"product={product.get('name')} style={style}")
         log_step(
             "썸네일 생성",
             "시작",
@@ -148,13 +152,16 @@ class ThumbnailService:
 
             if result:
                 log_success(f"썸네일 생성 완료: {len(result):,} bytes")
+                log_feature_end("thumbnail_generate", extra_detail=f"size={len(result)}")
                 return result
 
             raise ThumbnailGenerationError("썸네일 생성 결과가 없습니다.")
 
-        except ThumbnailGenerationError:
+        except ThumbnailGenerationError as e:
+            log_feature_fail("thumbnail_generate", str(e))
             raise
         except Exception as e:
+            log_feature_fail("thumbnail_generate", str(e))
             logger.error(f"썸네일 생성 실패: {e}")
             raise ThumbnailGenerationError(
                 f"썸네일 생성 실패: {e}",
@@ -194,6 +201,7 @@ class ThumbnailService:
         progress_callback: Callable[[str, int], None] | None = None,
     ) -> list[dict]:
         """여러 스타일 썸네일 일괄 생성"""
+        log_feature_start("thumbnail_generate_multiple", f"count={len(hook_texts or [])}")
         log_step("썸네일 일괄 생성", "시작", f"{len(hook_texts)}개")
 
         if styles is None:
@@ -230,6 +238,7 @@ class ThumbnailService:
             progress_callback("모든 썸네일 생성 완료!", 100)
 
         log_success(f"썸네일 일괄 생성 완료: {len(results)}개")
+        log_feature_end("thumbnail_generate_multiple", extra_detail=f"success_count={len(results)}")
         return results
 
     def _build_thumbnail_prompt(
@@ -401,6 +410,7 @@ class ThumbnailService:
         먼저 추천 스타일을 정한 뒤, 그 스타일에 맞는 톤앤매너의 hook_text를 생성합니다.
         LLM(Gemini)이 있으면 사용하고, 없거나 실패 시 키워드 기반 폴백을 사용합니다.
         """
+        log_feature_start("thumbnail_analyze_product")
         style_keys = list(THUMBNAIL_STYLES.keys())
         default_info = {
             "name": "상품",
@@ -477,6 +487,7 @@ Analyze the product description below and output a JSON object containing:
                     "상품 설명 분석",
                     f"hook_text={hook_text}, recommended_style={recommended_style}, visual_description={visual_description[:40]}...",
                 )
+                log_feature_end("thumbnail_analyze_product", extra_detail=f"style={recommended_style}")
                 return {
                     "name": data.get("name") or default_info["name"],
                     "category": data.get("category") or default_info["category"],
@@ -485,6 +496,7 @@ Analyze the product description below and output a JSON object containing:
                     "recommended_style": recommended_style,
                 }
             except (json.JSONDecodeError, AttributeError) as e:
+                log_feature_fail("thumbnail_analyze_product", str(e))
                 log_llm_fail("상품 설명 분석", str(e))
                 logger.warning(f"LLM 시각 정보 파싱 실패, 폴백 사용: {e}")
 

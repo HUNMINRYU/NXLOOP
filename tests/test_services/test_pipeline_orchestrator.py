@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from services.pipeline.orchestrator import PipelineOrchestrator
-from services.pipeline.types import AuthorInfo, Candidate, CandidateFeatures, CandidateScore
+from services.pipeline.types import (
+    AuthorInfo,
+    Candidate,
+    CandidateFeatures,
+    CandidateScore,
+)
 
 
 def _make_candidate(content: str = "테스트 댓글 내용입니다") -> Candidate:
