@@ -48,6 +48,7 @@ from services.pipeline.stages.scorer import SemanticScorer
 from services.pipeline.stages.selector import TopInsightSelector
 from services.pipeline.stages.source import TwoTowerSource
 from services.pipeline_service import PipelineService
+from services.pipeline_task_service import PipelineTaskService
 from services.rag_ingestion_service import RagIngestionService
 from services.thumbnail_service import ThumbnailService
 from services.video_service import VideoService
@@ -107,6 +108,7 @@ class ServiceContainer:
             "rag_ingestion_service",
             "insight_external_service",
             "insight_report_service",
+            "pipeline_task_service",
         ):
             self.__dict__.pop(name, None)
 
@@ -348,6 +350,10 @@ class ServiceContainer:
             rag_client=self.discovery_engine_client,
             rag_ingestion=self.rag_ingestion_service,
         )
+
+    @cached_property
+    def pipeline_task_service(self) -> PipelineTaskService:
+        return PipelineTaskService()
 
 
 def get_services() -> ServiceContainer:
