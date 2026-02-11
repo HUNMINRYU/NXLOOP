@@ -172,12 +172,18 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
         const video = selectedOutputs?.video?.url;
         if (typeof thumb === 'string') setSelectedThumbUrl(thumb);
         if (typeof video === 'string') setSelectedVideoUrl(video);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pipeline.pipelineResult?.task_id]);
+    }, [pipeline.pipelineResult?.task_id, selectedOutputs?.thumbnail?.url, selectedOutputs?.video?.url]);
+
+    const isCtrRankingReady = useMemo(() => {
+        if (!taskId) return false;
+        if (thumbCandidates.length === 0) return false;
+        if (pipeline.pipelineResult?.task_id !== taskId) return false;
+        if (pipeline.pipelineResult?.status !== 'success') return false;
+        return true;
+    }, [taskId, thumbCandidates.length, pipeline.pipelineResult?.task_id, pipeline.pipelineResult?.status]);
 
     useEffect(() => {
-        if (!taskId) return;
-        if (thumbCandidates.length === 0) return;
+        if (!isCtrRankingReady) return;
 
         const toNum = (v: unknown): number | undefined => {
             if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -194,7 +200,7 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
         (async () => {
             try {
                 const hooks = thumbCandidates.map((c) => c.hookText).filter(Boolean) as string[];
-                const results = await Promise.all(
+                const settled = await Promise.allSettled(
                     thumbCandidates.map(async (c) => {
                         const title = c.hookText || pipeline.selectedProduct || 'thumbnail';
                         const desc = c.style ? `thumbnail style: ${c.style}` : '';
@@ -217,13 +223,53 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                 );
                 if (cancelled) return;
                 const map: Record<string, { predictedCtr?: number; totalScore?: number; grade?: string }> = {};
-                results.forEach((r) => {
-                    map[r.url] = { predictedCtr: r.predictedCtr, totalScore: r.totalScore, grade: r.grade };
+                let non404FailureCount = 0;
+                settled.forEach((r) => {
+                    if (r.status === 'fulfilled') {
+                        map[r.value.url] = {
+                            predictedCtr: r.value.predictedCtr,
+                            totalScore: r.value.totalScore,
+                            grade: r.value.grade,
+                        };
+                        return;
+                    }
+                    const reason = r.reason as unknown;
+                    const status =
+                        typeof reason === 'object' &&
+                        reason !== null &&
+                        'status' in reason &&
+                        typeof (reason as { status?: unknown }).status === 'number'
+                            ? (reason as { status: number }).status
+                            : typeof reason === 'object' &&
+                                reason !== null &&
+                                'message' in reason &&
+                                typeof (reason as { message?: unknown }).message === 'string' &&
+                                /\b404\b/.test((reason as { message: string }).message)
+                              ? 404
+                              : null;
+                    if (status !== 404) non404FailureCount += 1;
                 });
                 setThumbScores(map);
-            } catch {
+                if (non404FailureCount > 0 && Object.keys(map).length === 0) {
+                    setThumbRankError('CTR 랭킹을 불러오지 못했습니다. (권한/상태에 따라 정렬이 생략될 수 있어요)');
+                }
+            } catch (error: unknown) {
                 if (cancelled) return;
-                // PRO 미만(403) 또는 task 컨텍스트 불충분 등은 조용히 폴백(원본 순서)
+                const status =
+                    typeof error === 'object' &&
+                    error !== null &&
+                    'status' in error &&
+                    typeof (error as { status?: unknown }).status === 'number'
+                        ? (error as { status: number }).status
+                        : typeof error === 'object' &&
+                            error !== null &&
+                            'message' in error &&
+                            typeof (error as { message?: unknown }).message === 'string' &&
+                            /\b404\b/.test((error as { message: string }).message)
+                          ? 404
+                          : null;
+                if (status === 404) return;
+                // 결과 미준비(404)는 조용히 폴백, 그 외 오류는 사용자에게 안내한다.
                 setThumbRankError('CTR 랭킹을 불러오지 못했습니다. (권한/상태에 따라 정렬이 생략될 수 있어요)');
             }
         })();
@@ -231,7 +277,7 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
         return () => {
             cancelled = true;
         };
-    }, [taskId, thumbCandidates, pipeline.selectedProduct]);
+    }, [isCtrRankingReady, taskId, thumbCandidates, pipeline.selectedProduct]);
 
     if (!item) {
         return (
