@@ -36,6 +36,7 @@ async def create_checkout_session(
         raise HTTPException(status_code=500, detail="Stripe configuration error")
 
     try:
+        frontend_url = settings.app.frontend_url or settings.app.app_url
         if request.plan == "BUSINESS":
             # Pricing에서 Business는 "Contact Sales" 플로우로 분리한다.
             raise HTTPException(
@@ -62,10 +63,10 @@ async def create_checkout_session(
             # 결제 완료/취소 후에는 "프론트"로 돌아가야 합니다.
             # Stripe는 CHECKOUT_SESSION_ID 토큰을 success_url에 주입할 수 있습니다.
             success_url=(
-                f"{settings.app.frontend_url}/payment/success"
+                f"{frontend_url}/payment/success"
                 f"?session_id={{CHECKOUT_SESSION_ID}}"
             ),
-            cancel_url=f"{settings.app.frontend_url}/pricing",
+            cancel_url=f"{frontend_url}/pricing",
         )
         log_feature_end("stripe_create_checkout", extra_detail="url created")
         return {"url": session.url}

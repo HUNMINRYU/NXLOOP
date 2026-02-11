@@ -21,7 +21,7 @@ steps:
       - '--allow-unauthenticated'
       - '--add-cloudsql-instances=$PROJECT_ID:asia-northeast3:nexloop-db'
       # NOTE: 시크릿은 Secret Manager로 이관 (Cloud Run env var는 그대로 유지하되 값은 secret 참조)
-      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest,GOOGLE_API_KEY=GOOGLE_API_KEY:latest,NAVER_CLIENT_ID=NAVER_CLIENT_ID:latest,NAVER_CLIENT_SECRET=NAVER_CLIENT_SECRET:latest,NOTION_API_KEY=NOTION_API_KEY:latest'
+      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest,GOOGLE_API_KEY=GOOGLE_API_KEY:latest,NAVER_CLIENT_ID=NAVER_CLIENT_ID:latest,NAVER_CLIENT_SECRET=NAVER_CLIENT_SECRET:latest,NOTION_API_KEY=NOTION_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest'
       # NOTE: CORS_ORIGINS는 콤마(,)가 포함된 문자열이므로 커스텀 delimiter(^~^)로 안전하게 전달한다.
       - '--update-env-vars=^~^APP_URL=https://nexloop-backend-ekhgbjmhqq-du.a.run.app~FRONTEND_URL=https://nexloop-frontend-ekhgbjmhqq-du.a.run.app~CORS_ORIGINS=https://nexloop-frontend-ekhgbjmhqq-du.a.run.app,https://nexloop-frontend-225483801144.asia-northeast3.run.app'
       - '--min-instances=1'

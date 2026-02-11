@@ -159,6 +159,9 @@ class AppSettings(BaseSettings):
     jwt_secret: str = Field(default="dev-secret", validation_alias="JWT_SECRET")
     jwt_expire_hours: int = Field(default=24, validation_alias="JWT_EXPIRE_HOURS")
     app_url: str = Field(default="http://localhost:8000", validation_alias="APP_URL")
+    frontend_url: str = Field(
+        default="http://localhost:3000", validation_alias="FRONTEND_URL"
+    )
     scheduler_service_account: str = Field(
         default="", validation_alias="SCHEDULER_SERVICE_ACCOUNT"
     )
