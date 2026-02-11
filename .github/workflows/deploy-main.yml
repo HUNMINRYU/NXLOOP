@@ -11,47 +11,73 @@ permissions:
 jobs:
   deploy-backend:
     runs-on: ubuntu-latest
-    # main push에서 GitHub Actions로 Cloud Build submit을 수행할 때 필요한 secrets guard.
-    # (Cloud Build 트리거로도 배포가 가능하므로, secrets 미설정 시 "실패" 대신 skip 처리)
-    if: ${{ secrets.GCP_WIF_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT_EMAIL != '' && secrets.GCP_PROJECT_ID != '' }}
     steps:
+      - name: Guard required secrets
+        id: guard
+        shell: bash
+        run: |
+          if [[ -z "${{ secrets.GCP_WIF_PROVIDER }}" || -z "${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}" || -z "${{ secrets.GCP_PROJECT_ID }}" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Required GCP secrets are missing. Skip deploy-backend."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
+        if: steps.guard.outputs.skip != 'true'
         uses: actions/checkout@v4
 
       - name: Auth to Google Cloud (WIF)
+        if: steps.guard.outputs.skip != 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
 
       - name: Setup gcloud
+        if: steps.guard.outputs.skip != 'true'
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Cloud Build (backend deploy)
+        if: steps.guard.outputs.skip != 'true'
         run: |
           gcloud beta builds submit --config=cloudbuild.backend.yaml .
 
   deploy-frontend:
     runs-on: ubuntu-latest
     needs: [deploy-backend]
-    if: ${{ secrets.GCP_WIF_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT_EMAIL != '' && secrets.GCP_PROJECT_ID != '' }}
     steps:
+      - name: Guard required secrets
+        id: guard
+        shell: bash
+        run: |
+          if [[ -z "${{ secrets.GCP_WIF_PROVIDER }}" || -z "${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}" || -z "${{ secrets.GCP_PROJECT_ID }}" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Required GCP secrets are missing. Skip deploy-frontend."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
+        if: steps.guard.outputs.skip != 'true'
         uses: actions/checkout@v4
 
       - name: Auth to Google Cloud (WIF)
+        if: steps.guard.outputs.skip != 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
 
       - name: Setup gcloud
+        if: steps.guard.outputs.skip != 'true'
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Cloud Build (frontend deploy)
+        if: steps.guard.outputs.skip != 'true'
         run: |
           gcloud beta builds submit --config=cloudbuild.frontend.yaml .
