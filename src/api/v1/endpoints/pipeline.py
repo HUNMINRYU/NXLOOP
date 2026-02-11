@@ -204,39 +204,49 @@ async def get_pipeline_status(task_id: str):
 
 @router.get("/status-stream/{task_id}")
 async def stream_pipeline_status(task_id: str):
+    feature = "pipeline_status_stream"
+    log_feature_start(feature, task_id)
+
     async def event_generator():
         services = get_services()
         pipeline_task_service = getattr(services, "pipeline_task_service", None)
         routing_miss_count = 0
-        while True:
-            status = PIPELINE_STATUS.get(task_id)
-            if not status and pipeline_task_service is not None:
-                status = await pipeline_task_service.get_status(task_id)
-            if not status:
-                # Cloud Run 다중 인스턴스에서 아직 DB 스냅샷이 없으면 잠깐 비어 있을 수 있다.
-                # UX를 위해 짧게 재시도하며, 그동안은 routing_miss 상태를 흘려준다.
-                routing_miss_count += 1
-                if routing_miss_count <= 10:
-                    fallback = {
-                        "status": "pending",
-                        "message": "작업 상태를 다른 인스턴스에서 처리 중입니다. 잠시 후 다시 확인하세요.",
-                        "progress": {
-                            "percentage": 0,
-                            "message": "라우팅 재시도 중",
-                            "step": "routing_miss",
-                        },
-                        "task_id": task_id,
-                        "process_logs": [],
-                    }
-                    yield f"data: {_safe_json_dumps(fallback)}\n\n"
-                    await asyncio.sleep(1)
-                    continue
-                yield "event: error\ndata: {}\n\n"
-                break
-            yield f"data: {_safe_json_dumps(status)}\n\n"
-            if status.get("status") in {"success", "failed"}:
-                break
-            await asyncio.sleep(1)
+        close_reason = "closed"
+        try:
+            while True:
+                status = PIPELINE_STATUS.get(task_id)
+                if not status and pipeline_task_service is not None:
+                    status = await pipeline_task_service.get_status(task_id)
+                if not status:
+                    # Cloud Run 다중 인스턴스에서 아직 DB 스냅샷이 없으면 잠깐 비어 있을 수 있다.
+                    # UX를 위해 짧게 재시도하며, 그동안은 routing_miss 상태를 흘려준다.
+                    routing_miss_count += 1
+                    if routing_miss_count <= 10:
+                        fallback = {
+                            "status": "pending",
+                            "message": "작업 상태를 다른 인스턴스에서 처리 중입니다. 잠시 후 다시 확인하세요.",
+                            "progress": {
+                                "percentage": 0,
+                                "message": "라우팅 재시도 중",
+                                "step": "routing_miss",
+                            },
+                            "task_id": task_id,
+                            "process_logs": [],
+                        }
+                        yield f"data: {_safe_json_dumps(fallback)}\n\n"
+                        await asyncio.sleep(1)
+                        continue
+                    log_feature_fail(feature, f"Task not found after retries: {task_id}")
+                    close_reason = "not_found"
+                    yield "event: error\ndata: {}\n\n"
+                    break
+                yield f"data: {_safe_json_dumps(status)}\n\n"
+                if status.get("status") in {"success", "failed"}:
+                    close_reason = str(status.get("status"))
+                    break
+                await asyncio.sleep(1)
+        finally:
+            log_feature_end(feature, extra_detail=close_reason)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -494,7 +504,7 @@ async def generate_video_from_selected_thumbnail_endpoint(
     user: Annotated[Any, Depends(require_tier("PRO"))],
 ):
     """선택(채택)된 썸네일을 Start Frame으로 사용해 I2V 비디오를 재생성하고, 그 결과를 자동 채택한다."""
-    feature = "pipeline_generate_video_selected_thumbnail"
+    feature = "pipeline_generate_video_from_selected_thumbnail"
     t0 = perf_counter()
     log_feature_start(feature, task_id)
     try:

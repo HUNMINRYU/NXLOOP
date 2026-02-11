@@ -8,6 +8,7 @@ ASGI 레이어를 우회하고 엔드포인트 함수를 직접 호출해 검증
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -50,4 +51,34 @@ async def test_status_stream_yields_json_without_nameerror():
         assert data["status"] == "running"
     finally:
         pipeline_endpoint._PipelineTaskModel = prev_model
+        PIPELINE_STATUS.pop(task_id, None)
+
+
+@pytest.mark.asyncio
+async def test_status_stream_emits_feature_start_and_end_logs():
+    task_id = "task-test-status-stream-feature-log"
+    PIPELINE_STATUS[task_id] = {
+        "task_id": task_id,
+        "status": "success",
+        "message": "완료",
+        "progress": {"percentage": 100, "message": "완료", "step": "done"},
+        "process_logs": [],
+    }
+
+    try:
+        with (
+            patch("api.v1.endpoints.pipeline.log_feature_start") as start,
+            patch("api.v1.endpoints.pipeline.log_feature_end") as end,
+            patch("api.v1.endpoints.pipeline.log_feature_fail") as fail,
+        ):
+            resp = await pipeline_endpoint.stream_pipeline_status(task_id)
+            chunks = []
+            async for chunk in resp.body_iterator:
+                chunks.append(chunk)
+
+        assert chunks
+        start.assert_called_once_with("pipeline_status_stream", task_id)
+        end.assert_called_once_with("pipeline_status_stream", extra_detail="success")
+        fail.assert_not_called()
+    finally:
         PIPELINE_STATUS.pop(task_id, None)
