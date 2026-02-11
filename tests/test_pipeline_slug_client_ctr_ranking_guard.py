@@ -16,7 +16,13 @@ def test_ctr_ranking_call_is_guarded_by_pipeline_result_readiness() -> None:
 def test_ctr_404_error_is_silently_ignored() -> None:
     source = _read_component()
     assert "const status =" in source
-    assert "if (status === 404) return;" in source
+    assert "status === 404" in source
+
+
+def test_ctr_auth_error_is_silently_ignored() -> None:
+    source = _read_component()
+    assert "status === 401" in source
+    assert "status === 403" in source
 
 
 def test_ctr_ranking_uses_partial_failure_tolerant_parallel_calls() -> None:

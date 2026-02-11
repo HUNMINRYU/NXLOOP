@@ -247,7 +247,7 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                                 /\b404\b/.test((reason as { message: string }).message)
                               ? 404
                               : null;
-                    if (status !== 404) non404FailureCount += 1;
+                    if (status !== 404 && status !== 401 && status !== 403) non404FailureCount += 1;
                 });
                 setThumbScores(map);
                 if (non404FailureCount > 0 && Object.keys(map).length === 0) {
@@ -268,7 +268,7 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                             /\b404\b/.test((error as { message: string }).message)
                           ? 404
                           : null;
-                if (status === 404) return;
+                if (status === 404 || status === 401 || status === 403) return;
                 // 결과 미준비(404)는 조용히 폴백, 그 외 오류는 사용자에게 안내한다.
                 setThumbRankError('CTR 랭킹을 불러오지 못했습니다. (권한/상태에 따라 정렬이 생략될 수 있어요)');
             }

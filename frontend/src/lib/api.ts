@@ -14,6 +14,14 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 const API_PREFIX = '/api/v1';
 
 type RequestOptions = Omit<RequestInit, 'body'> & { body?: string | FormData };
+export class ApiError extends Error {
+    status: number;
+    constructor(status: number, message: string) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = status;
+    }
+}
 type CacheStats = {
     entries?: number;
     hits?: number;
@@ -127,16 +135,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
                 window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`;
             }
         }
-        if (response.status === 403) {
-            throw new Error('접근 권한이 없습니다.');
-        }
+        if (response.status === 403) throw new ApiError(403, '접근 권한이 없습니다.');
         if (response.status === 429) {
             // Rate limit exceeded
             const message = await response.text();
-            throw new Error(message || 'Too many requests. Please try again later.');
+            throw new ApiError(response.status, message || 'Too many requests. Please try again later.');
         }
         const message = await response.text();
-        throw new Error(message || `Request failed: ${response.status}`);
+        throw new ApiError(response.status, message || `Request failed: ${response.status}`);
     }
 
     const contentType = response.headers.get('content-type') || '';
