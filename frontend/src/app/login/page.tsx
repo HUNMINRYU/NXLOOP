@@ -26,8 +26,15 @@ export default function LoginPage() {
         setIsLoading(true);
         setMessage('');
         try {
-            await login({ email: asEmail(email), password });
-            const me = await fetchMe();
+            const loginResult = await login({ email: asEmail(email), password });
+            let me = loginResult;
+            try {
+                me = await fetchMe();
+            } catch (error) {
+                // 일부 브라우저 환경(서드파티 쿠키 정책 등)에서 즉시 /auth/me 검증이 실패할 수 있다.
+                // 로그인 API가 성공했으면 우선 로그인 정보를 사용해 흐름을 유지한다.
+                console.warn('[login] fetchMe fallback to login response', error);
+            }
             setAuth({
                 email: me.email,
                 role: me.role,
@@ -135,9 +142,9 @@ export default function LoginPage() {
                                 </div>
 
                                 <Button
+                                    type="submit"
                                     disabled={isLoading}
                                     className="w-full h-16 rounded-[20px] bg-[#0ca678] hover:bg-[#099268] text-white text-xl font-black shadow-lg shadow-[#0ca678]/20 transition-all active:scale-[0.98] mt-4"
-                                    onClick={handleLogin}
                                 >
                                     {isLoading ? 'Signing In...' : 'Log In'}
                                 </Button>

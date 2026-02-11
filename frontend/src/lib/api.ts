@@ -617,10 +617,13 @@ export function generateVideoFromSelectedThumbnail(taskId: TaskId) {
 }
 
 export function login(payload: { email: Email; password: string }) {
-    return request<{ email: Email; role: string; name: string }>('/auth/login', {
+    return request<{ email: Email; role: string; name: string; tier?: string; subscription_status?: string }>(
+        '/auth/login',
+        {
         method: 'POST',
         body: JSON.stringify(payload),
-    });
+        }
+    );
 }
 
 export function signup(payload: Record<string, unknown>) {
