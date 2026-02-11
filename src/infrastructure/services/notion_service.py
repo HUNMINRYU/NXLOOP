@@ -610,5 +610,5 @@ class NotionService(ExportPort):
             }
         }
         if children:
-            block["children"] = children
+            block["toggle"]["children"] = children
         return block
