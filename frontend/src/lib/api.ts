@@ -111,6 +111,7 @@ function getCsrfHeader(method?: string): Record<string, string> {
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const apiBaseUrl = resolveApiBaseUrl();
+    const crossOriginBaseUrl = process.env.NEXT_PUBLIC_API_URL || '';
     // 빌드 타임(서버 사이드)에서 백엔드 URL이 없으면 fetch 시도 차단 (빌드 무한 대기/실패 방지)
     if (typeof window === 'undefined' && !apiBaseUrl && !path.startsWith('http')) {
         console.warn(`[Build] Skipping server-side fetch for ${path} due to missing API_BASE_URL`);
@@ -122,7 +123,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
             ? `${API_PREFIX}${path}`
             : path;
 
-    const response = await fetch(`${apiBaseUrl}${effectivePath}`, {
+    const requestInit: RequestInit = {
         ...options,
         credentials: 'include',
         headers: {
@@ -130,7 +131,24 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
             ...getCsrfHeader(options.method),
             ...(options.headers || {}),
         } as Record<string, string>,
-    });
+    };
+    const requestUrl = `${apiBaseUrl}${effectivePath}`;
+    let response = await fetch(requestUrl, requestInit);
+
+    // same-origin 프록시가 아직 반영되지 않았거나 중간에 실패한 경우,
+    // cross-origin 백엔드 URL로 한 번만 재시도한다.
+    const shouldRetryWithCrossOrigin =
+        typeof window !== 'undefined' &&
+        !FORCE_CROSS_ORIGIN_API &&
+        !path.startsWith('http') &&
+        apiBaseUrl === '' &&
+        !!crossOriginBaseUrl &&
+        effectivePath.startsWith(API_PREFIX) &&
+        !response.ok &&
+        (response.status === 404 || response.status >= 500);
+    if (shouldRetryWithCrossOrigin) {
+        response = await fetch(`${crossOriginBaseUrl}${effectivePath}`, requestInit);
+    }
 
     if (!response.ok) {
         // Only redirect to login for authenticated endpoints (not /chat for guests)
