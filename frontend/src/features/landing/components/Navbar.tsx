@@ -249,6 +249,18 @@ export default function Navbar() {
 
                             <div className="flex items-center gap-2">
                                 {userRole === 'admin' && (
+                                    <Link href="/admin">
+                                        <Button
+                                            variant="ghost"
+                                            className={`rounded-full h-10 px-3 flex items-center justify-center gap-1.5 text-xs font-bold ${showDarkNav ? 'text-slate-600 hover:bg-slate-100' : 'text-white/80 hover:bg-white/10'}`}
+                                            title="Admin Dashboard"
+                                        >
+                                            Admin
+                                        </Button>
+                                    </Link>
+                                )}
+
+                                {userRole === 'admin' && (
                                     <Link href="/admin/scheduler">
                                         <Button
                                             variant="ghost"
@@ -425,6 +437,15 @@ export default function Navbar() {
                                 >
                                     {userTier === 'FREE' ? 'Upgrade' : `${userTier === 'BUSINESS' ? 'Business' : 'Pro'} Plan`}
                                 </Link>
+                                {userRole === 'admin' && (
+                                    <Link
+                                        href="/admin"
+                                        className="flex items-center justify-center gap-3 w-full h-14 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 hover:bg-slate-100 transition-all"
+                                        onClick={() => setDrawerOpen(false)}
+                                    >
+                                        Admin Dashboard
+                                    </Link>
+                                )}
                                 {userRole === 'admin' && (
                                     <Link
                                         href="/admin/scheduler"
