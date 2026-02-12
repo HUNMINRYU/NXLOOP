@@ -225,6 +225,14 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
         setSelectedVideoUrl(typeof video === 'string' ? video : null);
     }, [pipeline.pipelineResult?.task_id, selectedOutputs?.thumbnail?.url, selectedOutputs?.video?.url]);
 
+    useEffect(() => {
+        if (selectedThumbUrl) return;
+        const firstCandidate = displayThumbCandidates[0];
+        if (!firstCandidate) return;
+        // 명시 선택값이 없는 경우 첫 후보를 기본 선택해 후속(I2V) 실패를 줄인다.
+        setSelectedThumbUrl(firstCandidate.url);
+    }, [displayThumbCandidates, selectedThumbUrl]);
+
     const isCtrRankingReady = useMemo(() => {
         if (!taskId) return false;
         if (thumbCandidates.length === 0) return false;

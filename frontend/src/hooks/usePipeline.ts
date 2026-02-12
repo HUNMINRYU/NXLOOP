@@ -207,44 +207,58 @@ export default function usePipeline() {
 
       try {
         const forceCrossOrigin = process.env.NEXT_PUBLIC_FORCE_CROSS_ORIGIN_API === '1';
-        const baseUrl = forceCrossOrigin ? process.env.NEXT_PUBLIC_API_URL || '' : '';
-        eventSource = new EventSource(`${baseUrl}/api/v1/pipeline/status-stream/${taskId}`);
+        const crossOriginBaseUrl = process.env.NEXT_PUBLIC_API_URL || '';
+        let useCrossOriginSse = forceCrossOrigin;
+        const getSseUrl = () => `${useCrossOriginSse ? crossOriginBaseUrl : ''}/api/v1/pipeline/status-stream/${taskId}`;
 
-        eventSource.onmessage = async (event) => {
-          if (!isActive) return;
-          try {
-            const streamStatus = JSON.parse(event.data) as PipelineStatus;
-            lastSseMessageAtMs = Date.now();
-            markSseHealthy();
-            startSseWatchdogIfNeeded();
+        const openSse = () => {
+          eventSource = new EventSource(getSseUrl());
 
-            const finished = streamStatus?.status === 'success' || streamStatus?.status === 'failed';
+          eventSource.onmessage = async (event) => {
+            if (!isActive) return;
+            try {
+              const streamStatus = JSON.parse(event.data) as PipelineStatus;
+              lastSseMessageAtMs = Date.now();
+              markSseHealthy();
+              startSseWatchdogIfNeeded();
 
-            if (finished) {
-              stopPolling();
-              stopReconnectTimer();
-              stopSseWatchdog();
+              const finished = streamStatus?.status === 'success' || streamStatus?.status === 'failed';
+
+              if (finished) {
+                stopPolling();
+                stopReconnectTimer();
+                stopSseWatchdog();
+                closeEventSource();
+                await handleFinished(streamStatus);
+              } else {
+                setExecutionState({ status: streamStatus });
+              }
+            } catch {
+              // payload가 예상과 다르면 polling 폴백 + 재연결로 복구한다.
               closeEventSource();
-              await handleFinished(streamStatus);
-            } else {
-              setExecutionState({ status: streamStatus });
+              startPolling();
+              scheduleReconnect();
             }
-          } catch {
-            // payload가 예상과 다르면 polling 폴백 + 재연결로 복구한다.
+          };
+
+          eventSource.onerror = () => {
+            if (!isActive) return;
+            // same-origin SSE 경로가 아직 반영되지 않은 경우 cross-origin으로 1회 전환 시도
+            if (!useCrossOriginSse && crossOriginBaseUrl) {
+              useCrossOriginSse = true;
+              closeEventSource();
+              openSse();
+              return;
+            }
+
+            // SSE가 깨지면 즉시 polling으로 폴백하고, 백오프로 SSE 재연결을 시도한다.
             closeEventSource();
             startPolling();
             scheduleReconnect();
-          }
+          };
         };
 
-        eventSource.onerror = () => {
-          if (!isActive) return;
-
-          // SSE가 깨지면 즉시 polling으로 폴백하고, 백오프로 SSE 재연결을 시도한다.
-          closeEventSource();
-          startPolling();
-          scheduleReconnect();
-        };
+        openSse();
       } catch {
         closeEventSource();
         startPolling();

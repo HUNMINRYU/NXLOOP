@@ -109,6 +109,14 @@ function getCsrfHeader(method?: string): Record<string, string> {
     return token ? { 'X-CSRF-Token': token } : {};
 }
 
+function isRetriableStatus(status: number): boolean {
+    return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const apiBaseUrl = resolveApiBaseUrl();
     const crossOriginBaseUrl = process.env.NEXT_PUBLIC_API_URL || '';
@@ -133,21 +141,48 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         } as Record<string, string>,
     };
     const requestUrl = `${apiBaseUrl}${effectivePath}`;
-    let response = await fetch(requestUrl, requestInit);
-
-    // same-origin 프록시가 아직 반영되지 않았거나 중간에 실패한 경우,
-    // cross-origin 백엔드 URL로 한 번만 재시도한다.
-    const shouldRetryWithCrossOrigin =
+    let currentUrl = requestUrl;
+    const canCrossOriginFallback =
         typeof window !== 'undefined' &&
         !FORCE_CROSS_ORIGIN_API &&
         !path.startsWith('http') &&
         apiBaseUrl === '' &&
         !!crossOriginBaseUrl &&
-        effectivePath.startsWith(API_PREFIX) &&
+        effectivePath.startsWith(API_PREFIX);
+
+    const fetchSafe = async (url: string): Promise<Response | null> => {
+        try {
+            return await fetch(url, requestInit);
+        } catch (error) {
+            console.warn('[api] fetch failed', url, error);
+            return null;
+        }
+    };
+
+    let response = await fetchSafe(currentUrl);
+    if (!response && canCrossOriginFallback) {
+        currentUrl = `${crossOriginBaseUrl}${effectivePath}`;
+        response = await fetchSafe(currentUrl);
+    }
+    if (
+        response &&
         !response.ok &&
-        (response.status === 404 || response.status >= 500);
-    if (shouldRetryWithCrossOrigin) {
-        response = await fetch(`${crossOriginBaseUrl}${effectivePath}`, requestInit);
+        canCrossOriginFallback &&
+        (response.status === 404 || response.status >= 500)
+    ) {
+        currentUrl = `${crossOriginBaseUrl}${effectivePath}`;
+        const fallbackResponse = await fetchSafe(currentUrl);
+        if (fallbackResponse) response = fallbackResponse;
+    }
+    if (!response) {
+        throw new ApiError(0, 'Network request failed');
+    }
+
+    const method = (options.method || 'GET').toUpperCase();
+    if (method === 'GET' && isRetriableStatus(response.status)) {
+        await delay(250);
+        const retryResponse = await fetchSafe(currentUrl);
+        if (retryResponse) response = retryResponse;
     }
 
     if (!response.ok) {
