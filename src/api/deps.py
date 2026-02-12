@@ -2,7 +2,8 @@ import asyncio
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy.exc import SQLAlchemyError, TimeoutError as SQLAlchemyTimeoutError
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 
 from config.dependencies import get_services
 from infrastructure.database.connection import get_db_session

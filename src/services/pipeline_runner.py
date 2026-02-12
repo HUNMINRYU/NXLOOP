@@ -1,8 +1,11 @@
 # src/services/pipeline_runner.py
 import asyncio
+import contextlib
 import time
 from datetime import datetime
 from typing import Any
+
+from pydantic import ValidationError
 
 from config.dependencies import get_services
 from config.products import get_product_by_name
@@ -10,7 +13,6 @@ from config.settings import get_settings
 from core.models import PipelineConfig
 from core.state import PIPELINE_RESULTS, PIPELINE_STATUS
 from schemas.requests import PipelineRequest
-from pydantic import ValidationError
 from utils.logger import (
     get_logger,
     log_feature_end,
@@ -196,10 +198,8 @@ async def execute_pipeline_task(request: PipelineRequest, task_id: str) -> None:
             summary = summarize_validation_error(ve)
             log_feature_fail("pipeline_run", summary)
             logger.error("PipelineConfig validation failed: %s", summary)
-            try:
+            with contextlib.suppress(Exception):
                 logger.error("PipelineConfig validation errors: %s", ve.errors())
-            except Exception:
-                pass
 
             _update_status_impl(
                 task_id,
@@ -387,7 +387,5 @@ async def execute_pipeline_task(request: PipelineRequest, task_id: str) -> None:
     finally:
         if persist_task is not None:
             persist_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await persist_task
-            except asyncio.CancelledError:
-                pass

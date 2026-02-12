@@ -1,7 +1,5 @@
 from datetime import datetime, timezone
 
-import pytest
-
 from infrastructure.database.models import PipelineTask
 
 

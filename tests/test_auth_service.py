@@ -1,5 +1,5 @@
-from services.auth_service import AuthService
 from infrastructure.database.models import User
+from services.auth_service import AuthService
 
 
 def test_auth_token_includes_role():

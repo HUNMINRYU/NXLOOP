@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
+from enum import Enum
+from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
@@ -15,12 +19,6 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-
-import json
-
-from decimal import Decimal
-from enum import Enum
-from uuid import UUID
 
 
 class Base(DeclarativeBase):

@@ -14,7 +14,7 @@ def _is_postgresql() -> bool:
     """현재 데이터베이스가 PostgreSQL인지 확인"""
     return DATABASE_URL.startswith("postgresql")
 
-def _env_int(env: "os._Environ[str]", key: str, default: int) -> int:
+def _env_int(env: os._Environ[str], key: str, default: int) -> int:
     raw = (env.get(key) or "").strip()
     if not raw:
         return int(default)
@@ -24,7 +24,7 @@ def _env_int(env: "os._Environ[str]", key: str, default: int) -> int:
         return int(default)
 
 
-def _postgres_engine_kwargs_for_env(env: "os._Environ[str]") -> dict[str, object]:
+def _postgres_engine_kwargs_for_env(env: os._Environ[str]) -> dict[str, object]:
     """Cloud Run + Cloud SQL(Postgres) 운영을 위한 엔진 kwargs.
 
     db-f1-micro 같은 작은 인스턴스에서 커넥션 폭주를 막기 위해

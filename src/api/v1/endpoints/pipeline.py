@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import hashlib
 import json
 from datetime import datetime
@@ -860,11 +861,8 @@ async def predict_ctr(
     }
     pipeline_task_service = getattr(services, "pipeline_task_service", None)
     if pipeline_task_service is not None:
-        try:
+        with contextlib.suppress(Exception):
             await pipeline_task_service.upsert_result(request.task_id, result)
-        except Exception:
-            # best-effort: DB 장애/권한 문제 등으로 실패해도 예측 응답은 계속 반환한다.
-            pass
     log_feature_end(
         "ctr_predict",
         extra_detail=(

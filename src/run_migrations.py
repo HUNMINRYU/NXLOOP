@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import os
 
-from alembic import command
 from alembic.config import Config
 
-from utils.logger import get_logger, log_feature_end, log_feature_fail, log_feature_start
+from alembic import command
+from utils.logger import (
+    get_logger,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
+)
 
 logger = get_logger(__name__)
 

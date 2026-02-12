@@ -93,19 +93,19 @@ async def test_webhook_supports_multiple_secrets_comma_separated():
     )
     db = AsyncMock()
 
-    class _SigErr(Exception):
+    class _SigError(Exception):
         pass
 
     with (
         patch("api.v1.endpoints.stripe.settings", autospec=True) as mock_settings,
         patch("api.v1.endpoints.stripe.stripe.Webhook.construct_event") as construct_event,
         patch("api.v1.endpoints.stripe.StripeService") as service_cls,
-        patch("api.v1.endpoints.stripe.stripe.SignatureVerificationError", new=_SigErr),
+        patch("api.v1.endpoints.stripe.stripe.SignatureVerificationError", new=_SigError),
     ):
         # 첫 secret은 실패, 두 번째 secret은 성공하는 케이스를 흉내낸다.
         mock_settings.stripe_webhook_secret = "whsec_one, whsec_two"
         construct_event.side_effect = [
-            _SigErr("bad sig"),
+            _SigError("bad sig"),
             {"type": "checkout.session.completed"},
         ]
         service = service_cls.return_value

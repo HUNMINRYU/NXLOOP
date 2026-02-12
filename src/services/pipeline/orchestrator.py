@@ -11,8 +11,12 @@ from services.pipeline.stages.scorer import SemanticScorer
 from services.pipeline.stages.selector import TopInsightSelector
 from services.pipeline.stages.source import CommentSource
 from services.pipeline.types import Candidate
-from utils.logger import get_logger
-from utils.logger import log_feature_end, log_feature_fail, log_feature_start
+from utils.logger import (
+    get_logger,
+    log_feature_end,
+    log_feature_fail,
+    log_feature_start,
+)
 
 logger = get_logger(__name__)
 

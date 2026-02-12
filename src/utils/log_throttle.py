@@ -8,14 +8,14 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
 import threading
 import time
+from collections import OrderedDict
 from typing import Final
 
 _LOCK: Final[threading.Lock] = threading.Lock()
 # key 폭주가 있어도 메모리가 무한히 커지지 않도록 hard cap(LRU eviction)을 적용한다.
-_LAST_LOG_TS: "OrderedDict[str, float]" = OrderedDict()
+_LAST_LOG_TS: OrderedDict[str, float] = OrderedDict()
 
 _MAX_KEYS: Final[int] = 10_000
 

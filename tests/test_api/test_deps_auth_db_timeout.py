@@ -12,7 +12,7 @@ def _make_request_with_cookie(session_id: str) -> Request:
         "type": "http",
         "method": "GET",
         "path": "/",
-        "headers": [(b"cookie", f"nexloop_session={session_id}".encode("utf-8"))],
+        "headers": [(b"cookie", f"nexloop_session={session_id}".encode())],
     }
     return Request(scope)
 

@@ -14,13 +14,17 @@ from sqlalchemy import select
 from config.dependencies import get_services
 from config.settings import get_settings
 from infrastructure.database.connection import AsyncSessionFactory
-from infrastructure.database.models import CTRFeedback, CTRRankerApproval, CTRRankerCandidate, CTRRankerRun, now_kst
+from infrastructure.database.models import (
+    CTRFeedback,
+    CTRRankerApproval,
+    CTRRankerCandidate,
+    now_kst,
+)
 from infrastructure.services.notion_service import NotionService
-from services.ctr_predictor import CTRPredictor
 from services.ctr_ml_training import train_and_save as train_and_save_ml
+from services.ctr_predictor import CTRPredictor
 from services.model_eval_report_service import ModelEvalReportService
 from utils.logger import get_logger
-
 
 logger = get_logger(__name__)
 
@@ -188,7 +192,7 @@ def _groupkfold_eval_classification(rows: list[CandidateRow]) -> dict[str, Any]:
     predictor = CTRPredictor(gemini_client=None)
 
     # build feature matrix
-    X_list: list[dict[str, float]] = []
+    x_list: list[dict[str, float]] = []
     y: list[int] = []
     groups: list[str] = []
     run_ids: list[str] = []
@@ -199,18 +203,18 @@ def _groupkfold_eval_classification(rows: list[CandidateRow]) -> dict[str, Any]:
             thumbnail_description=r.thumbnail_description,
             competitor_titles=r.competitor_titles,
         )
-        X_list.append(_flatten_features(f))
+        x_list.append(_flatten_features(f))
         y.append(int(r.y_approved))
         groups.append(r.run_id)
         run_ids.append(r.run_id)
         cand_ids.append(r.candidate_id)
 
-    if not X_list:
+    if not x_list:
         return {"error": "no_samples"}
 
     # stable column order
-    cols = sorted({k for x in X_list for k in x.keys()})
-    X = [[x.get(c, 0.0) for c in cols] for x in X_list]
+    cols = sorted({k for x in x_list for k in x})
+    x_matrix = [[x.get(c, 0.0) for c in cols] for x in x_list]
 
     gkf = GroupKFold(n_splits=min(5, max(2, len(set(groups)))))
 
@@ -218,20 +222,20 @@ def _groupkfold_eval_classification(rows: list[CandidateRow]) -> dict[str, Any]:
     all_scores: list[float] = []
     all_y: list[int] = []
 
-    for fold_idx, (train_idx, test_idx) in enumerate(gkf.split(X, y, groups=groups), start=1):
-        X_train = [X[i] for i in train_idx]
+    for fold_idx, (train_idx, test_idx) in enumerate(gkf.split(x_matrix, y, groups=groups), start=1):
+        x_train = [x_matrix[i] for i in train_idx]
         y_train = [y[i] for i in train_idx]
-        X_test = [X[i] for i in test_idx]
+        x_test = [x_matrix[i] for i in test_idx]
         y_test = [y[i] for i in test_idx]
 
         scaler = StandardScaler()
-        X_train_s = scaler.fit_transform(X_train)
-        X_test_s = scaler.transform(X_test)
+        x_train_s = scaler.fit_transform(x_train)
+        x_test_s = scaler.transform(x_test)
 
         clf = LogisticRegression(max_iter=1000, class_weight="balanced")
-        clf.fit(X_train_s, y_train)
+        clf.fit(x_train_s, y_train)
 
-        scores = clf.predict_proba(X_test_s)[:, 1].tolist()
+        scores = clf.predict_proba(x_test_s)[:, 1].tolist()
         preds = [1 if s >= 0.5 else 0 for s in scores]
 
         p, r, f1, _ = precision_recall_fscore_support(y_test, preds, average="binary", zero_division=0)
@@ -288,7 +292,7 @@ def _baseline_top1_hit(rows: list[CandidateRow]) -> dict[str, Any]:
 
     total = 0
     hit = 0
-    for run_id, items in by_run.items():
+    for _run_id, items in by_run.items():
         if not items:
             continue
         total += 1
@@ -311,7 +315,7 @@ def _groupkfold_eval_regression(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
     predictor = CTRPredictor(gemini_client=None)
 
-    X_list: list[dict[str, float]] = []
+    x_list: list[dict[str, float]] = []
     y: list[float] = []
     for r in rows:
         f = predictor.extract_features(
@@ -319,32 +323,32 @@ def _groupkfold_eval_regression(rows: list[dict[str, Any]]) -> dict[str, Any]:
             thumbnail_description=str(r.get("thumbnail_description") or ""),
             competitor_titles=[],
         )
-        X_list.append(_flatten_features(f))
+        x_list.append(_flatten_features(f))
         y.append(float(r["actual_ctr"]))
 
-    if not X_list:
+    if not x_list:
         return {"error": "no_samples"}
 
-    cols = sorted({k for x in X_list for k in x.keys()})
-    X = [[x.get(c, 0.0) for c in cols] for x in X_list]
+    cols = sorted({k for x in x_list for k in x})
+    x_matrix = [[x.get(c, 0.0) for c in cols] for x in x_list]
 
-    kf = KFold(n_splits=min(5, max(2, len(X) // 5)), shuffle=True, random_state=42)
+    kf = KFold(n_splits=min(5, max(2, len(x_matrix) // 5)), shuffle=True, random_state=42)
 
     maes: list[float] = []
     rmses: list[float] = []
-    for train_idx, test_idx in kf.split(X):
-        X_train = [X[i] for i in train_idx]
+    for train_idx, test_idx in kf.split(x_matrix):
+        x_train = [x_matrix[i] for i in train_idx]
         y_train = [y[i] for i in train_idx]
-        X_test = [X[i] for i in test_idx]
+        x_test = [x_matrix[i] for i in test_idx]
         y_test = [y[i] for i in test_idx]
 
         scaler = StandardScaler()
-        X_train_s = scaler.fit_transform(X_train)
-        X_test_s = scaler.transform(X_test)
+        x_train_s = scaler.fit_transform(x_train)
+        x_test_s = scaler.transform(x_test)
 
         model = Ridge(alpha=1.0)
-        model.fit(X_train_s, y_train)
-        pred = model.predict(X_test_s)
+        model.fit(x_train_s, y_train)
+        pred = model.predict(x_test_s)
 
         maes.append(float(mean_absolute_error(y_test, pred)))
         rmses.append(float(mean_squared_error(y_test, pred, squared=False)))
@@ -356,6 +360,19 @@ def _groupkfold_eval_regression(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "rmse": float(round(sum(rmses) / len(rmses), 4)) if rmses else None,
         "feature_columns": cols,
     }
+
+
+def _write_report_files(report: dict[str, Any], report_date: date) -> tuple[Path, Path]:
+    out_dir = Path("outputs/ctr_training/reports")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    json_path = out_dir / f"{report_date.isoformat()}-ctr-offline-eval.json"
+    json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    docs_dir = Path("docs") / report_date.isoformat() / "codex"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    md_path = docs_dir / "ctr-offline-training-eval.md"
+    md_path.write_text(_render_md(report), encoding="utf-8")
+    return json_path, md_path
 
 
 def _render_md(report: dict[str, Any]) -> str:
@@ -505,15 +522,7 @@ async def main_async(args: argparse.Namespace) -> int:
         "regression": reg,
     }
 
-    out_dir = Path("outputs/ctr_training/reports")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    json_path = out_dir / f"{report_date.isoformat()}-ctr-offline-eval.json"
-    json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    docs_dir = Path("docs") / report_date.isoformat() / "codex"
-    docs_dir.mkdir(parents=True, exist_ok=True)
-    md_path = docs_dir / "ctr-offline-training-eval.md"
-    md_path.write_text(_render_md(report), encoding="utf-8")
+    json_path, md_path = _write_report_files(report, report_date)
 
     # Upload artifacts to GCS (archive)
     settings = get_settings()
