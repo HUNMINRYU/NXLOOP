@@ -7,6 +7,8 @@ WORKDIR /app/frontend
 # 빌드 타임 환경 변수 (API URL)
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG BACKEND_API_URL
+ENV BACKEND_API_URL=$BACKEND_API_URL
 
 COPY frontend/package.json ./
 COPY frontend/package-lock.json ./

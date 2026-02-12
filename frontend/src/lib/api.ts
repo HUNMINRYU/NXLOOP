@@ -10,8 +10,20 @@ import {
     YouTubeIngestResponse,
 } from '@/types/insights';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 const API_PREFIX = '/api/v1';
+const FORCE_CROSS_ORIGIN_API = process.env.NEXT_PUBLIC_FORCE_CROSS_ORIGIN_API === '1';
+
+function resolveApiBaseUrl(): string {
+    // 브라우저에서는 same-origin(/api/v1/*) 호출을 기본값으로 사용해
+    // cross-site 쿠키 이슈(로그인 직후 /auth/me 401 루프)를 줄인다.
+    if (typeof window !== 'undefined') {
+        if (FORCE_CROSS_ORIGIN_API) {
+            return process.env.NEXT_PUBLIC_API_URL || '';
+        }
+        return '';
+    }
+    return process.env.INTERNAL_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || '';
+}
 
 type RequestOptions = Omit<RequestInit, 'body'> & { body?: string | FormData };
 export class ApiError extends Error {
@@ -98,8 +110,9 @@ function getCsrfHeader(method?: string): Record<string, string> {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    const apiBaseUrl = resolveApiBaseUrl();
     // 빌드 타임(서버 사이드)에서 백엔드 URL이 없으면 fetch 시도 차단 (빌드 무한 대기/실패 방지)
-    if (typeof window === 'undefined' && !API_BASE_URL && !path.startsWith('http')) {
+    if (typeof window === 'undefined' && !apiBaseUrl && !path.startsWith('http')) {
         console.warn(`[Build] Skipping server-side fetch for ${path} due to missing API_BASE_URL`);
         return {} as T;
     }
@@ -109,7 +122,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
             ? `${API_PREFIX}${path}`
             : path;
 
-    const response = await fetch(`${API_BASE_URL}${effectivePath}`, {
+    const response = await fetch(`${apiBaseUrl}${effectivePath}`, {
         ...options,
         credentials: 'include',
         headers: {

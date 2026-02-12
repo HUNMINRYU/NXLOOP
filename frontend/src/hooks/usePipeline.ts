@@ -214,7 +214,8 @@ export default function usePipeline() {
       closeEventSource();
 
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
+        const forceCrossOrigin = process.env.NEXT_PUBLIC_FORCE_CROSS_ORIGIN_API === '1';
+        const baseUrl = forceCrossOrigin ? process.env.NEXT_PUBLIC_API_URL || '' : '';
         eventSource = new EventSource(`${baseUrl}/api/v1/pipeline/status-stream/${taskId}`);
 
         eventSource.onmessage = async (event) => {

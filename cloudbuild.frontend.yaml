@@ -6,6 +6,8 @@ steps:
       - 'build'
       - '--build-arg'
       - 'NEXT_PUBLIC_API_URL=https://nexloop-backend-ekhgbjmhqq-du.a.run.app'
+      - '--build-arg'
+      - 'BACKEND_API_URL=https://nexloop-backend-ekhgbjmhqq-du.a.run.app'
       - '-f'
       - 'Dockerfile.frontend'
       - '-t'
