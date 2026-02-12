@@ -136,7 +136,6 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
     const [thumbScores, setThumbScores] = useState<
         Record<string, { predictedCtr?: number; totalScore?: number; grade?: string }>
     >({});
-    const [thumbRankError, setThumbRankError] = useState<string>('');
     const [selectedThumbUrl, setSelectedThumbUrl] = useState<string | null>(null);
     const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
     const [i2vStatus, setI2vStatus] = useState<{ loading: boolean; error: string }>({ loading: false, error: '' });
@@ -259,8 +258,6 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
         };
 
         let cancelled = false;
-        setThumbRankError('');
-
         (async () => {
             try {
                 const hooks = thumbCandidates.map((c) => c.hookText).filter(Boolean) as string[];
@@ -315,7 +312,7 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                 });
                 setThumbScores(map);
                 if (non404FailureCount > 0 && Object.keys(map).length === 0) {
-                    setThumbRankError('CTR 랭킹을 불러오지 못했습니다. (권한/상태에 따라 정렬이 생략될 수 있어요)');
+                    console.warn('[pipeline-ui] failed to fetch CTR ranking; keep fallback ordering');
                 }
             } catch (error: unknown) {
                 if (cancelled) return;
@@ -333,8 +330,8 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                           ? 404
                           : null;
                 if (status === 404 || status === 401 || status === 403) return;
-                // 결과 미준비(404)는 조용히 폴백, 그 외 오류는 사용자에게 안내한다.
-                setThumbRankError('CTR 랭킹을 불러오지 못했습니다. (권한/상태에 따라 정렬이 생략될 수 있어요)');
+                // 결과 미준비(404)는 조용히 폴백, 그 외 오류도 UI에는 노출하지 않고 로그만 남긴다.
+                console.warn('[pipeline-ui] CTR ranking request failed', error);
             }
         })();
 
@@ -391,10 +388,6 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                             <Card className="max-w-3xl mx-auto p-8 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
                                 <h1 className="font-display text-3xl font-bold text-slate-900">Distribution</h1>
                                 <p className="mt-2 text-slate-600">Create에서 채택한 대표 산출물을 기준으로 다음 단계를 진행합니다.</p>
-                                {distRefresh.error ? (
-                                    <p className="mt-3 text-sm text-rose-600 font-semibold">{distRefresh.error}</p>
-                                ) : null}
-
                                 <div className="mt-6 grid gap-6 md:grid-cols-2">
                                     <div className="rounded-xl border border-slate-200 bg-white p-4">
                                         <p className="text-xs font-semibold text-slate-500">선택된 썸네일</p>
@@ -425,6 +418,7 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                                                 usePipelineStore.getState().setExecutionState({ result: refreshed });
                                             } catch (e: unknown) {
                                                 const msg = e instanceof Error ? e.message : '결과를 새로고침하지 못했습니다.';
+                                                console.warn('[pipeline-ui] distribution refresh failed', msg);
                                                 setDistRefresh({ loading: false, error: msg });
                                                 return;
                                             } finally {
@@ -586,7 +580,6 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                             </Card>
 	                            <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
 		                                <h2 className="text-xl font-bold mb-4 text-slate-900">Thumbnails</h2>
-	                                    {thumbRankError ? <p className="text-sm text-rose-600 font-semibold mb-2">{thumbRankError}</p> : null}
 		                                <div className="grid grid-cols-2 gap-3">
 		                                    {displayThumbCandidates.map((item, i) => {
 	                                            const url = item.url;
@@ -655,12 +648,12 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
 	                            </Card>
 	                            <Card className="p-6 border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/50">
 	                                <h2 className="text-xl font-bold mb-4 text-slate-900">Videos</h2>
-	                                {i2vStatus.error ? <p className="text-sm text-rose-600 font-semibold mb-2">{i2vStatus.error}</p> : null}
 	                                <div className="mb-4 flex flex-wrap gap-2">
 	                                    <Button
 	                                        onClick={async () => {
 	                                            if (!taskId) return;
 	                                            if (!selectedThumbUrl) {
+                                                    console.warn('[pipeline-ui] i2v skipped: no selected thumbnail');
 	                                                setI2vStatus({ loading: false, error: '먼저 썸네일을 채택해 주세요.' });
 	                                                return;
 	                                            }
@@ -677,13 +670,14 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
 	                                                } catch {
 	                                                    // ignore
 	                                                }
-                                            } catch (e: unknown) {
-                                                const msg =
-                                                    e instanceof Error
-                                                        ? e.message
-                                                        : '선택 썸네일 기반 비디오 생성에 실패했습니다.';
-                                                setI2vStatus({ loading: false, error: msg });
-                                                return;
+	                                            } catch (e: unknown) {
+	                                                const msg =
+	                                                    e instanceof Error
+	                                                        ? e.message
+	                                                        : '선택 썸네일 기반 비디오 생성에 실패했습니다.';
+                                                    console.warn('[pipeline-ui] i2v generation failed', msg);
+	                                                setI2vStatus({ loading: false, error: msg });
+	                                                return;
                                             } finally {
                                                 setI2vStatus((s) => ({ ...s, loading: false }));
                                             }

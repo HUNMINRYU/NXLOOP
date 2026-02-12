@@ -51,7 +51,7 @@ export default function usePipeline() {
         if (!usePipelineStore.getState().selectedProduct && DUMMY_PRODUCTS.length > 0) {
           setConfiguration({ selectedProduct: DUMMY_PRODUCTS[0] });
         }
-        setExecutionState({ error: '제품 목록 API 응답이 비어 있어 기본 카탈로그로 대체했습니다.' });
+        console.warn('[pipeline] products api returned empty list, fallback to default catalog');
       })
 	      .catch(() => {
 	        if (!isMounted) return;
@@ -59,7 +59,7 @@ export default function usePipeline() {
           if (!usePipelineStore.getState().selectedProduct && DUMMY_PRODUCTS.length > 0) {
              setConfiguration({ selectedProduct: DUMMY_PRODUCTS[0] });
           }
-          setExecutionState({ error: '제품 목록 API 호출에 실패해 기본 카탈로그로 대체했습니다.' });
+          console.warn('[pipeline] products api failed, fallback to default catalog');
 	      });
 
 	    return () => {
@@ -93,7 +93,7 @@ export default function usePipeline() {
       } catch (err: unknown) {
         if (isActive) {
           const message = err instanceof Error ? err.message : '';
-          setExecutionState({ error: message || '결과를 불러오지 못했습니다.' });
+          console.warn('[pipeline] failed to fetch pipeline result', message || err);
         }
       }
     };
@@ -174,7 +174,7 @@ export default function usePipeline() {
       } catch (err: unknown) {
         if (isActive) {
           const message = err instanceof Error ? err.message : '';
-          setExecutionState({ error: message || '상태를 불러오지 못했습니다.' });
+          console.warn('[pipeline] failed to fetch pipeline status', message || err);
         }
       }
     };
@@ -303,9 +303,10 @@ export default function usePipeline() {
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '';
+      console.warn('[pipeline] failed to run pipeline', message || err);
       setExecutionState({ 
           isRunning: false, 
-          error: message || '파이프라인 실행에 실패했습니다.' 
+          error: '' 
       });
     }
   };

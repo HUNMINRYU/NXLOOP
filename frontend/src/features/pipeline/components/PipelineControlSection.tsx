@@ -67,6 +67,10 @@ export function PipelineControlSection({
   approvalMessage,
   showApprovalControls = true,
 }: PipelineControlSectionProps) {
+  useEffect(() => {
+    if (!errorMessage) return;
+    console.warn('[pipeline-ui] hidden error:', errorMessage);
+  }, [errorMessage]);
   const mockSteps = useMemo(
     () => [
       '기업 지식 베이스 검색 중...',
@@ -182,7 +186,6 @@ export function PipelineControlSection({
           <Toggle label="Notion 내보내기" checked={exportToNotion} onChange={setExportToNotion} />
         </div>
       </div>
-      {errorMessage && <p className="text-sm text-red-500">{errorMessage}</p>}
       <div className="soft-section p-3">
         <div className="flex justify-between text-sm">
           <span>{pipelineStatus?.message || '대기 중'}</span>
