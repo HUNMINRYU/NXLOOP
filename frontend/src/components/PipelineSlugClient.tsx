@@ -47,6 +47,58 @@ type PipelineSlugClientProps = {
     };
 };
 
+type DemoStage = {
+    id: string;
+    at: string;
+    title: string;
+    summary: string;
+    ctaLabel?: string;
+    ctaHref?: string;
+};
+
+const DEMO_STAGES: DemoStage[] = [
+    {
+        id: 'landing-problem',
+        at: '00:00-00:25',
+        title: '랜딩/로그인: 문제 제기와 포지셔닝',
+        summary: 'AI Slop 문제를 제시하고, 검증형 AI 플랫폼 포지션으로 진입합니다.',
+        ctaLabel: '랜딩 확인',
+        ctaHref: '/',
+    },
+    {
+        id: 'collect-filter',
+        at: '00:25-00:55',
+        title: '1차 관문: YouTube·Naver 수집 + 필터링',
+        summary: '실시간 데이터 수집 후 스팸·중복·저품질 후보를 자동 제거합니다.',
+    },
+    {
+        id: 'signal-extract',
+        at: '00:55-01:10',
+        title: '신호 추출: 감정·반응강도·구매의도',
+        summary: 'Gemini 분석을 통해 텍스트를 마케팅 의사결정 신호로 변환합니다.',
+    },
+    {
+        id: 'score-refine',
+        at: '01:10-01:25',
+        title: '2차 관문: 점수화·정제',
+        summary: '행동 예측 점수 기반으로 유사 후보를 제거하고 상위 후보를 남깁니다.',
+    },
+    {
+        id: 'result-output',
+        at: '01:25-01:40',
+        title: '결과: 전략 + 썸네일 + 비디오',
+        summary: '바로 활용 가능한 전략, CTR 예측 썸네일, 비디오를 동시에 제공합니다.',
+    },
+    {
+        id: 'admin-governance',
+        at: '01:40-02:05',
+        title: '관리자: 이력·스케줄·통제',
+        summary: '실행 이력 추적과 자동 스케줄 제어로 운영 가능한 시스템을 완성합니다.',
+        ctaLabel: '관리자 이동',
+        ctaHref: '/admin',
+    },
+];
+
 export default function PipelineSlugClient({ slug, initialData }: PipelineSlugClientProps) {
     const item = slugs[slug];
     const { role } = useAuth();
@@ -181,6 +233,18 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
         if (pipeline.pipelineResult?.status !== 'success') return false;
         return true;
     }, [taskId, thumbCandidates.length, pipeline.pipelineResult?.task_id, pipeline.pipelineResult?.status]);
+
+    const activeDemoStageIndex = useMemo(() => {
+        if (!pipeline.isRunning) {
+            if (pipeline.pipelineResult?.status === 'success') return 4;
+            return 0;
+        }
+        const p = pipeline.pipelineStatus?.progress?.percentage ?? 0;
+        if (p < 20) return 1;
+        if (p < 45) return 2;
+        if (p < 70) return 3;
+        return 4;
+    }, [pipeline.isRunning, pipeline.pipelineResult?.status, pipeline.pipelineStatus?.progress?.percentage]);
 
     useEffect(() => {
         if (!isCtrRankingReady) return;
@@ -442,6 +506,49 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
                             <h1 className="font-display text-4xl md:text-5xl font-bold text-slate-900 mt-2">{item.title}</h1>
                             <p className="font-body text-lg text-slate-600 mt-2">{item.subtitle}</p>
                         </header>
+
+                        {slug === 'create' && (
+                            <Card className="p-6 border-slate-200/60 bg-white/90 backdrop-blur-xl shadow-lg shadow-slate-200/50">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <h2 className="text-xl font-bold text-slate-900">Nexloop 시연 플로우</h2>
+                                    <div className="flex gap-2">
+                                        <Button asChild variant="secondary" className="bg-white text-slate-900 border border-slate-200 hover:bg-slate-50 font-semibold">
+                                            <Link href="/login">로그인</Link>
+                                        </Button>
+                                        <Button asChild className="bg-slate-900 hover:bg-slate-800 text-white font-semibold">
+                                            <Link href="/pipeline/distribution">결과 검증</Link>
+                                        </Button>
+                                    </div>
+                                </div>
+                                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                                    {DEMO_STAGES.map((stage, index) => {
+                                        const isActive = index === activeDemoStageIndex;
+                                        const isDone = index < activeDemoStageIndex || (!pipeline.isRunning && pipeline.pipelineResult?.status === 'success' && index <= 4);
+                                        return (
+                                            <div
+                                                key={stage.id}
+                                                className={`rounded-xl border p-4 transition ${
+                                                    isActive
+                                                        ? 'border-indigo-300 bg-indigo-50/70'
+                                                        : isDone
+                                                          ? 'border-emerald-200 bg-emerald-50/70'
+                                                          : 'border-slate-200 bg-white'
+                                                }`}
+                                            >
+                                                <p className="text-xs font-semibold tracking-wide text-slate-500">{stage.at}</p>
+                                                <p className="mt-1 text-sm font-bold text-slate-900">{stage.title}</p>
+                                                <p className="mt-1 text-sm text-slate-600">{stage.summary}</p>
+                                                {stage.ctaHref && stage.ctaLabel ? (
+                                                    <Button asChild variant="secondary" className="mt-3 bg-white text-slate-900 border border-slate-200 hover:bg-slate-50 font-semibold">
+                                                        <Link href={stage.ctaHref}>{stage.ctaLabel}</Link>
+                                                    </Button>
+                                                ) : null}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </Card>
+                        )}
 
                     {slug === 'thumbnail' && (
                         <ThumbnailStudioSection
