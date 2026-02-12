@@ -48,3 +48,20 @@ async def test_create_checkout_session_fallbacks_to_app_url_when_frontend_url_em
         "https://app.example.com/payment/success?session_id="
     )
     assert kwargs["cancel_url"] == "https://app.example.com/pricing"
+
+
+@pytest.mark.asyncio
+async def test_create_checkout_session_invalid_user_email_returns_400():
+    request = StripeCreateCheckoutSessionRequest(plan="PRO")
+    user = SimpleNamespace(id=8, email="asdf@asdf@asdf")
+
+    with patch("api.v1.endpoints.stripe.settings", autospec=True) as mock_settings:
+        mock_settings.stripe_secret_key = "sk_test_mock"
+        mock_settings.app.frontend_url = "https://frontend.example.com"
+        mock_settings.app.app_url = "https://app.example.com"
+
+        with pytest.raises(HTTPException) as exc:
+            await create_checkout_session(request=request, user=user)
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "유효하지 않은 이메일 형식입니다."

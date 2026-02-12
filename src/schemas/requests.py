@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class PipelineRequest(BaseModel):
@@ -98,7 +98,7 @@ class LeadRequest(BaseModel):
 
 
 class AuthSignupRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str
     name: str | None = None
     team_name: str | None = None
@@ -107,7 +107,7 @@ class AuthSignupRequest(BaseModel):
 
 
 class AuthLoginRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
 

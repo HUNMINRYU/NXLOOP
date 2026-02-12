@@ -1,5 +1,6 @@
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import EmailStr, TypeAdapter, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import CurrentUser
@@ -17,6 +18,7 @@ from utils.logger import (
 router = APIRouter()
 logger = get_logger(__name__)
 settings = get_settings()
+email_validator = TypeAdapter(EmailStr)
 
 # 모듈 로드 시 Stripe API 키 설정
 if settings.stripe_secret_key:
@@ -36,6 +38,13 @@ async def create_checkout_session(
         raise HTTPException(status_code=500, detail="Stripe configuration error")
 
     try:
+        try:
+            email_validator.validate_python(user.email)
+        except ValidationError as e:
+            log_feature_fail("stripe_create_checkout", f"invalid user email: {user.email}")
+            logger.error("유효하지 않은 사용자 이메일입니다: %s", user.email)
+            raise HTTPException(status_code=400, detail="유효하지 않은 이메일 형식입니다.") from e
+
         frontend_url = settings.app.frontend_url or settings.app.app_url
         if request.plan == "BUSINESS":
             # Pricing에서 Business는 "Contact Sales" 플로우로 분리한다.
