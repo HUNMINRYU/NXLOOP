@@ -222,8 +222,8 @@ export default function PipelineSlugClient({ slug, initialData }: PipelineSlugCl
     useEffect(() => {
         const thumb = selectedOutputs?.thumbnail?.url;
         const video = selectedOutputs?.video?.url;
-        if (typeof thumb === 'string') setSelectedThumbUrl(thumb);
-        if (typeof video === 'string') setSelectedVideoUrl(video);
+        setSelectedThumbUrl(typeof thumb === 'string' ? thumb : null);
+        setSelectedVideoUrl(typeof video === 'string' ? video : null);
     }, [pipeline.pipelineResult?.task_id, selectedOutputs?.thumbnail?.url, selectedOutputs?.video?.url]);
 
     const isCtrRankingReady = useMemo(() => {
