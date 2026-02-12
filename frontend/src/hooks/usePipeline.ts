@@ -37,7 +37,7 @@ export default function usePipeline() {
 	      .then((data) => {
 	        if (!isMounted) return;
 	        const names = data?.products || [];
-	        if (names.length > 0) {
+        if (names.length > 0) {
 	          setProducts(names);
 	          // 초기 선택값이 없을 때만 설정
 	          if (!usePipelineStore.getState().selectedProduct && names.length > 0) {
@@ -45,29 +45,21 @@ export default function usePipeline() {
 	          }
 	          return;
 	        }
-	        if (isDev) {
-	          setProducts(DUMMY_PRODUCTS);
-	          if (!usePipelineStore.getState().selectedProduct && DUMMY_PRODUCTS.length > 0) {
-	            setConfiguration({ selectedProduct: DUMMY_PRODUCTS[0] });
-	          }
-	          return;
-	        }
-        setProducts([]);
-        setConfiguration({ selectedProduct: '' });
-        setExecutionState({ error: '제품 목록을 불러오지 못했습니다.' });
+        // 운영에서도 products API가 일시 실패할 수 있으므로
+        // 데모/실사용 흐름이 끊기지 않게 로컬 카탈로그로 폴백한다.
+        setProducts(DUMMY_PRODUCTS);
+        if (!usePipelineStore.getState().selectedProduct && DUMMY_PRODUCTS.length > 0) {
+          setConfiguration({ selectedProduct: DUMMY_PRODUCTS[0] });
+        }
+        setExecutionState({ error: '제품 목록 API 응답이 비어 있어 기본 카탈로그로 대체했습니다.' });
       })
 	      .catch(() => {
 	        if (!isMounted) return;
-	        if (isDev) {
-	          setProducts(DUMMY_PRODUCTS);
-	          if (!usePipelineStore.getState().selectedProduct && DUMMY_PRODUCTS.length > 0) {
-	             setConfiguration({ selectedProduct: DUMMY_PRODUCTS[0] });
-	          }
-	          return;
-	        }
-	        setProducts([]);
-	        setConfiguration({ selectedProduct: '' });
-	        setExecutionState({ error: '제품 목록을 불러오지 못했습니다.' });
+          setProducts(DUMMY_PRODUCTS);
+          if (!usePipelineStore.getState().selectedProduct && DUMMY_PRODUCTS.length > 0) {
+             setConfiguration({ selectedProduct: DUMMY_PRODUCTS[0] });
+          }
+          setExecutionState({ error: '제품 목록 API 호출에 실패해 기본 카탈로그로 대체했습니다.' });
 	      });
 
 	    return () => {
