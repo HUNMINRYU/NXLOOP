@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 from fastapi import APIRouter, Depends, Request, Response
 
@@ -49,6 +50,11 @@ def _cookie_policy(request: Request) -> tuple[bool, str]:
 
 def _set_auth_cookies(response: Response, request: Request, session_id: str, csrf_token: str) -> None:
     secure, same_site = _cookie_policy(request)
+    # 프론트/백엔드가 서로 다른 도메인인 Cloud Run 구성에서는 브라우저가
+    # third-party cookie를 차단할 수 있다. CHIPS(Partitioned) 속성을 함께 주면
+    # 최신 Chromium 계열에서 세션 유지 성공률이 높아진다.
+    can_partition = sys.version_info >= (3, 14)
+    partitioned = secure and same_site == "none" and can_partition
 
     # "브라우저 종료 시 만료" 정책: max_age/expires를 설정하지 않는다.
     response.set_cookie(
@@ -58,6 +64,7 @@ def _set_auth_cookies(response: Response, request: Request, session_id: str, csr
         secure=secure,
         samesite=same_site,
         path="/",
+        partitioned=partitioned,
     )
     # CSRF 토큰은 JS가 읽어 헤더로 제출해야 하므로 HttpOnly=False
     response.set_cookie(
@@ -67,6 +74,7 @@ def _set_auth_cookies(response: Response, request: Request, session_id: str, csr
         secure=secure,
         samesite=same_site,
         path="/",
+        partitioned=partitioned,
     )
 
 
