@@ -754,7 +754,7 @@ async def analyze_comments_deep(
 @router.post("/analysis/ctr-predict")
 async def predict_ctr(
     request: CTRPredictRequest,
-    user: Annotated[Any, Depends(require_tier("PRO"))],
+    user: CurrentUser,
 ):
     log_feature_start(
         "ctr_predict",
